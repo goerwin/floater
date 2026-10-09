@@ -152,13 +152,20 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
 
         hostingView.invalidateIntrinsicContentSize()
         hostingView.layoutSubtreeIfNeeded()
+        let maximumHeight = viewModel.currentRequest == nil
+            ? FloaterPanelLayout.maximumEditingHeight
+            : FloaterPanelLayout.maximumHeight
+        panel.maxSize = NSSize(width: FloaterPanelLayout.width, height: maximumHeight)
         let height = min(
-            FloaterPanelLayout.maximumHeight,
+            maximumHeight,
             max(FloaterPanelLayout.minimumHeight, ceil(hostingView.fittingSize.height))
         )
 
         var frame = panel.frame
         frame.origin.y = frame.maxY - height
+        if let screen = panel.screen {
+            frame.origin.y = max(screen.visibleFrame.minY + 12, frame.origin.y)
+        }
         frame.size.width = FloaterPanelLayout.width
         frame.size.height = height
         panel.setFrame(frame, display: true)

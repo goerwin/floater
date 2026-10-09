@@ -12,6 +12,7 @@ let package = Package(
         .target(name: "FloaterCore"),
         .executableTarget(name: "Floater", dependencies: ["FloaterCore"]),
         .executableTarget(name: "FloaterCLI", dependencies: ["FloaterCore"]),
+        .testTarget(name: "FloaterTests", dependencies: ["Floater"]),
         .testTarget(name: "FloaterCoreTests", dependencies: ["FloaterCore"])
     ],
     swiftLanguageModes: [.v6]
