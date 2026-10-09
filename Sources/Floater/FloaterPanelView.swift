@@ -27,7 +27,6 @@ struct FloaterPanelView: View {
         case dismiss
         case history
         case new
-        case accessibility
     }
 
     var body: some View {
@@ -84,19 +83,19 @@ struct FloaterPanelView: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .accessibilityAddTraits(.isHeader)
-                Spacer(minLength: 4)
                 if viewModel.isGenerating {
                     ProgressView()
                         .controlSize(.small)
                         .accessibilityLabel("Generating response")
                 }
+                Spacer(minLength: 4)
             }
             .gesture(WindowDragGesture())
 
-            panelButton("New", symbol: "plus", control: .new, action: newRequest)
+            panelButton("New", control: .new, action: newRequest)
                 .help("New request (Command+N)")
 
-            panelButton("History", symbol: "clock.arrow.circlepath", control: .history, action: onHistory)
+            panelButton("History", control: .history, action: onHistory)
                 .help("Open history (Command+H)")
         }
         .frame(minHeight: 24)
@@ -137,7 +136,7 @@ struct FloaterPanelView: View {
                 Spacer()
                 panelButton("Dismiss", control: .dismiss, action: dismissComposer)
                 panelButton(
-                    "Run", symbol: "arrow.up.right", control: .run,
+                    "Run", control: .run,
                     enabled: !contentState.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                     primary: true, action: submit
                 )
@@ -165,12 +164,12 @@ struct FloaterPanelView: View {
     }
 
     private func panelButton(
-        _ title: String, symbol: String? = nil, control: FocusedControl,
+        _ title: String, control: FocusedControl,
         enabled: Bool = true, primary: Bool = false, small: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         PanelButton(
-            title: title, symbol: symbol, shortcut: shortcut(for: control), isEnabled: enabled, isPrimary: primary, isSmall: small,
+            title: title, shortcut: shortcut(for: control), isEnabled: enabled, isPrimary: primary, isSmall: small,
             isFocused: focusedControl == control,
             prefersInitialFocus: control == .copy && viewModel.currentRequest != nil,
             identifier: control.rawValue,
@@ -259,7 +258,6 @@ struct FloaterPanelView: View {
         } else {
             controls = [.copy, .edit]
                 + (viewModel.response.isEmpty || !viewModel.canReplace || !accessibility.isGranted ? [] : [.replace])
-                + (accessibility.isGranted ? [] : [.accessibility])
                 + [.dismiss]
                 + [.history, .new]
         }
@@ -301,15 +299,6 @@ struct FloaterPanelView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .textSelection(.enabled)
             }
-            if !accessibility.isGranted {
-                HStack {
-                    Text("Replace requires Accessibility access.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    panelButton("Enable Accessibility", control: .accessibility, small: true, action: accessibility.request)
-                }
-            }
             actionBar
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -338,7 +327,7 @@ struct FloaterPanelView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity)
             .frame(height: height)
         } else {
             ScrollView {
@@ -370,8 +359,7 @@ struct FloaterPanelView: View {
         let errorHeight = viewModel.actionErrorMessage.map {
             measuredTextHeight($0, width: FloaterPanelLayout.contentWidth, fontSize: 12) + 8
         } ?? 0
-        let permissionHeight: CGFloat = accessibility.isGranted ? 0 : 36
-        let maximumHeight = max(18, FloaterPanelLayout.maximumResponseHeight - errorHeight - permissionHeight)
+        let maximumHeight = max(18, FloaterPanelLayout.maximumResponseHeight - errorHeight)
         guard contentState.isPromptExpanded, let prompt = viewModel.currentRequest?.prompt else {
             return maximumHeight
         }
@@ -414,15 +402,15 @@ struct FloaterPanelView: View {
     private var actionBar: some View {
         HStack(spacing: 10) {
             Spacer()
-            panelButton("Copy", symbol: "doc.on.doc", control: .copy, action: onCopy)
+            panelButton("Copy", control: .copy, action: onCopy)
                 .help("Copy the response (Command+C)")
-            panelButton("Edit", symbol: "pencil", control: .edit, action: editRequest)
+            panelButton("Edit", control: .edit, action: editRequest)
                 .help("Edit the prompt and run it again (Command+E)")
             panelButton(
-                "Replace", symbol: "arrow.uturn.down", control: .replace,
+                "Replace", control: .replace,
                 enabled: !viewModel.response.isEmpty && viewModel.canReplace && accessibility.isGranted, action: onReplace
             )
-            .help("Replace text in the previous app. Requires Accessibility access.")
+            .help("Replace text in the previous app. Enable Accessibility from Floater's menu to allow this.")
             panelButton("Dismiss", control: .dismiss, action: onDismiss)
         }
     }
@@ -463,7 +451,7 @@ struct FloaterPanelView: View {
 }
 
 enum FloaterPanelLayout {
-    static let width: CGFloat = 500
+    static let width: CGFloat = 620
     static let minimumHeight: CGFloat = 120
     static let maximumHeight: CGFloat = 480
     static var maximumEditingHeight: CGFloat {

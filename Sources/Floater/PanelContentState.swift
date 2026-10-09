@@ -25,4 +25,5 @@ final class PanelNavigation: ObservableObject {
 final class HistoryViewState: ObservableObject {
     @Published var query = ""
     @Published var selection: UUID?
+    var focusedControlIdentifier = "historySearch"
 }

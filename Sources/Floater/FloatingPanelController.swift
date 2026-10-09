@@ -18,6 +18,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     private var hostingView: NSHostingView<FloaterWindowView>?
     private var previousApplication: NSRunningApplication?
     private var resizeScheduled = false
+    private var historyFocusNeedsRestore = false
 
     private struct HistoryReturnState {
         let request: PromptRequest?
@@ -45,6 +46,9 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         self.previousApplication = previousApplication
         viewModel.setCanReplace(previousApplication != nil && previousApplication?.isTerminated == false)
         showPanel()
+        if let initialFirstResponder = panel?.initialFirstResponder {
+            panel?.makeFirstResponder(initialFirstResponder)
+        }
     }
 
     private func showPanel() {
@@ -62,6 +66,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
 
     func dismiss() {
         if navigation.isShowingHistory, historyReturnsToPanel {
+            rememberHistoryFocus()
             if let state = historyReturnState {
                 viewModel.restore(request: state.request, response: state.response, errorMessage: state.errorMessage)
                 contentState.prompt = state.prompt
@@ -74,6 +79,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
             fitPanelToContent()
         } else if !navigation.isShowingHistory, responseOpenedFromHistory {
             navigation.isShowingHistory = true
+            historyFocusNeedsRestore = true
             fitPanelToContent()
         } else {
             closeAndRestoreApplication()
@@ -86,6 +92,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     }
 
     func hide() {
+        rememberHistoryFocus()
         panel?.orderOut(nil)
     }
 
@@ -101,10 +108,12 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
             viewModel.setCanReplace(previousApplication != nil && previousApplication?.isTerminated == false)
         }
         navigation.isShowingHistory = true
+        historyFocusNeedsRestore = true
         showPanel()
     }
 
     func openHistoryEntry(_ entry: HistoryEntry) {
+        rememberHistoryFocus()
         if historyReturnsToPanel, !responseOpenedFromHistory {
             historyReturnState = HistoryReturnState(
                 request: viewModel.currentRequest, response: viewModel.response, errorMessage: viewModel.errorMessage,
@@ -222,6 +231,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
             ),
             history: HistoryView(
                 store: historyStore, onOpen: { [weak self] entry in self?.openHistoryEntry(entry) },
+                onClear: { [weak self] in self?.clearHistory() },
                 onDismiss: { [weak self] in self?.dismiss() },
                 onNew: { [weak self] in self?.showComposer(previousApplication: self?.previousApplication) },
                 state: historyState
@@ -272,7 +282,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
             : viewModel.currentRequest == nil
             ? FloaterPanelLayout.maximumEditingHeight
             : FloaterPanelLayout.maximumHeight
-        let width: CGFloat = navigation.isShowingHistory ? 620 : FloaterPanelLayout.width
+        let width = FloaterPanelLayout.width
         panel.minSize = NSSize(width: width, height: FloaterPanelLayout.minimumHeight)
         panel.maxSize = NSSize(width: width, height: maximumHeight)
         let height = min(
@@ -292,6 +302,46 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
             )
         }
         panel.setFrame(frame, display: true)
+        if navigation.isShowingHistory, historyFocusNeedsRestore {
+            restoreHistoryFocus()
+        }
+    }
+
+    private func rememberHistoryFocus() {
+        guard navigation.isShowingHistory, let responder = panel?.firstResponder else { return }
+        if let editor = responder as? NSTextView, editor.isFieldEditor {
+            historyState.focusedControlIdentifier = "historySearch"
+        } else if let identifier = (responder as? NSView)?.identifier?.rawValue {
+            historyState.focusedControlIdentifier = identifier
+        }
+    }
+
+    private func clearHistory() {
+        rememberHistoryFocus()
+        let previousIdentifier = historyState.focusedControlIdentifier
+        if previousIdentifier == "clearHistory" {
+            historyState.focusedControlIdentifier = "historyDismiss"
+        }
+        restoreHistoryFocus()
+        historyStore.clear()
+        if previousIdentifier == "clearHistory", !historyStore.entries.isEmpty || historyStore.errorMessage != nil {
+            historyState.focusedControlIdentifier = previousIdentifier
+            restoreHistoryFocus()
+        }
+    }
+
+    private func restoreHistoryFocus() {
+        guard let panel, let root = panel.contentView,
+              let search = root.firstDescendant(where: { $0.identifier?.rawValue == "historySearch" }) else { return }
+        let remembered = root.firstDescendant(where: { $0.identifier?.rawValue == historyState.focusedControlIdentifier })
+        let target: NSView
+        if let remembered, (remembered as? NSControl)?.isEnabled != false {
+            target = remembered
+        } else {
+            target = root.firstDescendant(where: { $0 is NSTableView }) ?? search
+        }
+        panel.initialFirstResponder = target
+        if panel.makeFirstResponder(target) { historyFocusNeedsRestore = false }
     }
 
     private func writeToPasteboard(_ string: String) {
@@ -312,11 +362,6 @@ final class FloaterPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
-
-    override func becomeKey() {
-        super.becomeKey()
-        if let initialFirstResponder { makeFirstResponder(initialFirstResponder) }
-    }
 
     override func sendEvent(_ event: NSEvent) {
         if attachedSheet == nil, event.type == .keyDown, onKeyDown?(event) == true { return }

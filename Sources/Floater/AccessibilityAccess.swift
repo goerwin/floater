@@ -7,6 +7,7 @@ final class AccessibilityAccess: ObservableObject {
     @Published private(set) var isGranted: Bool
     private let isTrusted: () -> Bool
     private let requestAccess: () -> Void
+    private var menuObserver: NSObjectProtocol?
 
     init(
         isTrusted: @escaping () -> Bool = { AXIsProcessTrusted() },
@@ -20,6 +21,11 @@ final class AccessibilityAccess: ObservableObject {
         self.isTrusted = isTrusted
         self.requestAccess = requestAccess
         isGranted = isTrusted()
+        menuObserver = NotificationCenter.default.addObserver(
+            forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
+        }
     }
 
     func refresh() {
@@ -30,5 +36,9 @@ final class AccessibilityAccess: ObservableObject {
     func request() {
         requestAccess()
         refresh()
+    }
+
+    isolated deinit {
+        if let menuObserver { NotificationCenter.default.removeObserver(menuObserver) }
     }
 }

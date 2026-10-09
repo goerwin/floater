@@ -40,8 +40,72 @@ final class HistoryViewTests: XCTestCase {
         let restoredList = try XCTUnwrap(descendants(of: NSTableView.self, in: window.contentView!).first)
         XCTAssertEqual(restoredList.numberOfRows, 1)
         XCTAssertEqual(restoredList.selectedRow, 0)
+        XCTAssertTrue(window.firstResponder === restoredList, "Returning from a result should restore list focus")
         sendKey("\u{1b}", code: 53, to: window)
         XCTAssertFalse(window.isVisible)
+    }
+
+    func testCancelClearHistoryRestoresTheFocusedButton() throws {
+        let store = HistoryStore(fileURL: nil)
+        store.record(PromptRequest(prompt: "Sample"), response: "Sample result")
+        let window = makeWindow(store: store)
+        defer { window.close() }
+        let clear = try XCTUnwrap(descendants(of: NSButton.self, in: window.contentView!).first { $0.identifier?.rawValue == "clearHistory" })
+        window.makeFirstResponder(clear)
+        sendKey("\r", code: 36, to: window)
+        let alert = try XCTUnwrap(NSApp.windows.first {
+            $0 !== window && $0.isVisible && descendants(of: NSButton.self, in: $0.contentView ?? NSView()).contains { $0.title == "Clear history" }
+        })
+        let cancel = try XCTUnwrap(descendants(of: NSButton.self, in: alert.contentView!).first { $0.title == "Cancel" })
+        cancel.performClick(nil)
+        settle(window)
+        window.becomeKey()
+        settle(window)
+        XCTAssertFalse(alert.isVisible)
+        XCTAssertEqual(store.entries.count, 1)
+        XCTAssertTrue(window.firstResponder === clear, "Canceling Clear history should restore its button focus")
+    }
+
+    func testDismissSavedResponseRestoresOpenButtonFocus() throws {
+        let store = HistoryStore(fileURL: nil)
+        store.record(PromptRequest(prompt: "Sample"), response: "Sample result")
+        let window = makeWindow(store: store)
+        defer { window.close() }
+        let list = try XCTUnwrap(descendants(of: NSTableView.self, in: window.contentView!).first)
+        list.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        settle(window)
+        let open = try XCTUnwrap(descendants(of: NSButton.self, in: window.contentView!).first { $0.identifier?.rawValue == "historyOpen" })
+        window.makeFirstResponder(open)
+        sendKey("\r", code: 36, to: window)
+        XCTAssertFalse(controller?.isShowingHistory ?? true)
+        sendKey("\u{1b}", code: 53, to: window)
+        XCTAssertTrue(controller?.isShowingHistory ?? false)
+        XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, "historyOpen")
+    }
+
+    func testConfirmClearHistoryKeepsFocusOutOfSearch() throws {
+        let store = HistoryStore(fileURL: nil)
+        store.record(PromptRequest(prompt: "Sample"), response: "Sample result")
+        let window = makeWindow(store: store)
+        defer { window.close() }
+        let clear = try XCTUnwrap(descendants(of: NSButton.self, in: window.contentView!).first { $0.identifier?.rawValue == "clearHistory" })
+        window.makeFirstResponder(clear)
+        sendKey("\r", code: 36, to: window)
+        let alert = try XCTUnwrap(NSApp.windows.first {
+            $0 !== window && $0.isVisible && descendants(of: NSButton.self, in: $0.contentView ?? NSView()).contains { $0.title == "Clear history" }
+        })
+        let confirm = try XCTUnwrap(descendants(of: NSButton.self, in: alert.contentView!).first { $0.title == "Clear history" })
+        confirm.performClick(nil)
+        settle(window)
+        window.becomeKey()
+        settle(window)
+        XCTAssertTrue(store.entries.isEmpty)
+        XCTAssertFalse(clear.isEnabled)
+        let search = try XCTUnwrap(descendants(of: NSSearchField.self, in: window.contentView!).first)
+        XCTAssertNil(search.currentEditor(), "Clearing history should not focus Search")
+        XCTAssertEqual((window.firstResponder as? NSButton)?.accessibilityLabel(), "Dismiss", "Actual: \(String(describing: window.firstResponder))")
+        sendKey("\t", code: 48, to: window)
+        XCTAssertEqual((window.firstResponder as? NSButton)?.accessibilityLabel(), "New")
     }
 
     func testTabFromHistoryListFocusesClearHistoryWithOnePress() throws {

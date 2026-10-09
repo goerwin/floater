@@ -7,7 +7,7 @@ struct FloaterApp: App {
 
     var body: some Scene {
         MenuBarExtra("Floater", systemImage: "sparkles") {
-            Button("New request") {
+            Button("New…") {
                 AppDelegate.shared?.showComposer()
             }
             .keyboardShortcut("n", modifiers: .command)
@@ -17,12 +17,14 @@ struct FloaterApp: App {
             }
             .keyboardShortcut("h", modifiers: .command)
 
-            ConfigurationMenu(settings: appDelegate.settings)
+            Divider()
+
+            ReplacementSetting(settings: appDelegate.settings)
             AccessibilityMenu(accessibility: appDelegate.accessibility)
 
             Divider()
 
-            Button("Quit Floater") {
+            Button(quitLabel) {
                 NSApp.terminate(nil)
             }
         }
@@ -31,28 +33,29 @@ struct FloaterApp: App {
             CommandGroup(replacing: .appVisibility) {}
         }
     }
+
+    private var quitLabel: String {
+        guard let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String else {
+            return "Quit Floater"
+        }
+        return "Quit Floater \(version)"
+    }
 }
 
 private struct AccessibilityMenu: View {
     @ObservedObject var accessibility: AccessibilityAccess
 
     var body: some View {
-        if accessibility.isGranted {
-            Text("Accessibility access enabled")
-        } else {
-            Button("Enable Accessibility…", action: accessibility.request)
-        }
+        Button(accessibility.isGranted ? "Accessibility enabled" : "Enable Accessibility…", action: accessibility.request)
+            .disabled(accessibility.isGranted)
     }
 }
 
-private struct ConfigurationMenu: View {
+private struct ReplacementSetting: View {
     @ObservedObject var settings: AppSettings
 
     var body: some View {
-        Menu("Configuration") {
-            Section("When no text is selected") {
-                Toggle("Replace entire focused field", isOn: $settings.replaceWholeFieldWhenUnselected)
-            }
-        }
+        Toggle("Replace entire text", isOn: $settings.replaceWholeFieldWhenUnselected)
+            .help("When no text is selected, Replace overwrites the entire focused field.")
     }
 }

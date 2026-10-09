@@ -98,6 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
 
             Task { @MainActor [weak self] in
+                self?.accessibility.refresh()
                 guard let application = NSRunningApplication(processIdentifier: processID),
                       application.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
                 self?.lastExternalApplication = application

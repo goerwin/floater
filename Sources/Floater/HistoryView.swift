@@ -4,6 +4,7 @@ import SwiftUI
 struct HistoryView: View {
     @ObservedObject var store: HistoryStore
     let onOpen: (HistoryEntry) -> Void
+    let onClear: () -> Void
     var onDismiss: () -> Void = {}
     var onNew: () -> Void = {}
     @ObservedObject var state = HistoryViewState()
@@ -24,7 +25,7 @@ struct HistoryView: View {
                     .font(.headline)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .gesture(WindowDragGesture())
-                historyButton("New", symbol: "plus", shortcut: .new, identifier: "historyNew", action: onNew)
+                historyButton("New", shortcut: .new, identifier: "historyNew", action: onNew)
             }
             HistorySearchField(text: $state.query)
                 .frame(height: 28)
@@ -73,7 +74,7 @@ struct HistoryView: View {
             }
         }
         .padding(FloaterPanelLayout.padding)
-        .frame(width: 620, height: 500)
+        .frame(width: FloaterPanelLayout.width, height: 500)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
         .background {
             PanelKeyboardHandler(onKeyDown: handleKeyDown)
@@ -83,18 +84,18 @@ struct HistoryView: View {
         }
         .alert("Clear all history?", isPresented: $isConfirmingClear) {
             Button("Cancel", role: .cancel) {}
-            Button("Clear history", role: .destructive) { store.clear() }
+            Button("Clear history", role: .destructive, action: onClear)
         } message: {
             Text("This deletes all saved prompts, input, and responses from this Mac.")
         }
     }
 
     private func historyButton(
-        _ title: String, symbol: String? = nil, shortcut: PanelShortcut? = nil, keyHint: String? = nil,
+        _ title: String, shortcut: PanelShortcut? = nil, keyHint: String? = nil,
         identifier: String, enabled: Bool = true, action: @escaping () -> Void
     ) -> some View {
         PanelButton(
-            title: title, symbol: symbol, shortcut: shortcut, keyHint: keyHint, isEnabled: enabled,
+            title: title, shortcut: shortcut, keyHint: keyHint, isEnabled: enabled,
             isFocused: false, identifier: identifier, onFocus: {}, action: action
         )
         .fixedSize()

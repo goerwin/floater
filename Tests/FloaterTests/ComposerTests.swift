@@ -6,6 +6,92 @@ import XCTest
 
 @MainActor
 final class ComposerTests: XCTestCase {
+    func testOpeningMenuRefreshesAccessibilityStatusWithoutWindowActivation() {
+        _ = NSApplication.shared
+        var granted = false
+        let access = AccessibilityAccess(isTrusted: { granted }, requestAccess: {})
+        XCTAssertFalse(access.isGranted)
+        granted = true
+        NotificationCenter.default.post(name: NSMenu.didBeginTrackingNotification, object: NSMenu())
+        XCTAssertTrue(access.isGranted)
+        granted = false
+        NotificationCenter.default.post(name: NSMenu.didBeginTrackingNotification, object: NSMenu())
+        XCTAssertFalse(access.isGranted)
+    }
+
+    func testNewRequestResetsFocusWhileRefocusingAnExistingRequestDoesNot() throws {
+        let model = FloaterViewModel(provider: TestProvider())
+        let controller = FloatingPanelController(viewModel: model)
+        controller.showComposer(previousApplication: nil)
+        let window = try XCTUnwrap(controller.window)
+        defer { controller.hide() }
+        settle(window)
+        let input = try XCTUnwrap(window.contentView?.firstDescendant(where: { $0.identifier?.rawValue == "input" }))
+        window.makeFirstResponder(input)
+        settle(window)
+        window.resignKey()
+        window.becomeKey()
+        settle(window)
+        XCTAssertTrue(window.firstResponder === input)
+        controller.showComposer(previousApplication: nil)
+        settle(window)
+        XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, "prompt")
+    }
+
+    func testNavigationKeepsWindowWidthAndHorizontalPosition() throws {
+        let model = FloaterViewModel(provider: TestProvider())
+        let controller = FloatingPanelController(viewModel: model)
+        controller.showComposer(previousApplication: nil)
+        let window = try XCTUnwrap(controller.window)
+        defer { controller.hide() }
+        settle(window)
+        let originalFrame = window.frame
+        controller.showHistory()
+        settle(window)
+        XCTAssertEqual(window.frame.width, originalFrame.width)
+        XCTAssertEqual(window.frame.midX, originalFrame.midX)
+        controller.openHistoryEntry(HistoryEntry(request: PromptRequest(prompt: "Sample"), response: "Sample result"))
+        settle(window)
+        XCTAssertEqual(window.frame.width, originalFrame.width)
+        XCTAssertEqual(window.frame.midX, originalFrame.midX)
+        controller.dismiss()
+        settle(window)
+        XCTAssertEqual(window.frame.width, originalFrame.width)
+        XCTAssertEqual(window.frame.midX, originalFrame.midX)
+    }
+
+    func testRefocusingWindowPreservesFocusInAllThreeViews() throws {
+        for mode in ["composer", "response", "history"] {
+            let model = FloaterViewModel(provider: TestProvider())
+            if mode == "response" {
+                model.restore(HistoryEntry(request: PromptRequest(prompt: "Sample"), response: "Sample result"))
+            }
+            let controller = FloatingPanelController(viewModel: model)
+            if mode == "history" {
+                controller.showHistory()
+            } else {
+                controller.show(previousApplication: nil)
+            }
+            let window = try XCTUnwrap(controller.window)
+            defer { controller.hide() }
+            settle(window)
+            if mode == "composer" {
+                XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, "prompt")
+            } else if mode == "response" {
+                XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, "copy")
+            } else {
+                XCTAssertNotNil(window.contentView?.firstDescendant(where: { $0 is NSSearchField }).flatMap { ($0 as? NSSearchField)?.currentEditor() })
+            }
+            let target = try XCTUnwrap(window.contentView?.firstDescendant(where: { $0.identifier?.rawValue == (mode == "composer" ? "input" : mode == "response" ? "edit" : "historyList") }))
+            window.makeFirstResponder(target)
+            settle(window)
+            window.resignKey()
+            window.becomeKey()
+            settle(window)
+            XCTAssertTrue(window.firstResponder === target, "\(mode) should keep its focus after switching apps")
+        }
+    }
+
     func testHistoryBrowsingAndEditingPreserveTheOriginatingDraftOrResponse() throws {
         for responseMode in [false, true] {
             let model = FloaterViewModel(provider: TestProvider())
@@ -76,8 +162,8 @@ final class ComposerTests: XCTestCase {
         defer { window.close() }
         let replace = try XCTUnwrap(buttons(in: window.contentView!).first { $0.accessibilityLabel() == "Replace" })
         XCTAssertFalse(replace.isEnabled)
-        let enable = try XCTUnwrap(buttons(in: window.contentView!).first { $0.accessibilityLabel() == "Enable Accessibility" })
-        enable.performClick(nil)
+        XCTAssertNil(buttons(in: window.contentView!).first { $0.accessibilityLabel() == "Enable Accessibility" })
+        access.request()
         XCTAssertEqual(requests, 1)
         sendKey("r", code: 15, modifiers: [.command, .shift], to: window)
         XCTAssertEqual(replacements, 0)

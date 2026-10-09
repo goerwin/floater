@@ -11,7 +11,7 @@ Scripts/build-app.sh
 open build/Floater.app
 ```
 
-Floater runs in the menu bar. Choose **New request** to open the composer. The first launch registers the `floater://` URL scheme with macOS.
+Floater runs in the menu bar. Choose **New…** to open the composer. The first launch registers the `floater://` URL scheme with macOS.
 
 In Prompt and Input, **Enter** and **Shift+Enter** add a new line, and **Tab** and **Shift+Tab** insert tabs. Use **Command+R**, **Command+Enter**, or **Run** to submit. **Option+Tab** and **Option+Shift+Tab** move between fields and actions. Outside those editors, ordinary Tab and Shift+Tab also move focus. Response actions follow this order: **Copy, Edit, Replace, Dismiss, History, New**; disabled actions are skipped. Focused buttons activate with Enter or Space. **New** or **Command+N** starts an empty request. Button labels show their keyboard shortcuts.
 
@@ -66,7 +66,7 @@ floater://prompt?prompt=Translate%20this%20text&input=hola%20mundo&title=Transla
 
 The optional `--title` flag or `title` URL parameter sets the panel heading.
 
-The **Copy** button copies the full response and returns to the previous app. Select any portion of the response and use the normal macOS copy shortcut to copy only that text. **Replace** uses macOS Accessibility to replace selected text in the previous app's focused editable field. When nothing is selected, it replaces the entire field by default. Toggle **Configuration > Replace entire focused field** in the menu bar to require a selection instead. Replace stays disabled until Accessibility access is granted. Choose **Enable Accessibility** in the response or menu bar to request access and open the relevant System Settings pane. Floater checks permission again when its window gains focus. If a field cannot be edited through Accessibility, the response stays open with an error message.
+The **Copy** button copies the full response and returns to the previous app. Select any portion of the response and use the normal macOS copy shortcut to copy only that text. **Replace** uses macOS Accessibility to replace selected text in the previous app's focused editable field. When nothing is selected, it replaces the entire field by default. Toggle **Replace entire text** in the menu bar to require a selection instead. Replace stays disabled until Accessibility access is granted. Choose **Enable Accessibility…** in the menu bar to request access and open the relevant System Settings pane. Once granted, the menu shows a disabled **Accessibility enabled** status. Floater checks permission again when a menu opens or the app or its window gains focus. If a field cannot be edited through Accessibility, the response stays open with an error message.
 
 ## Licensing
 

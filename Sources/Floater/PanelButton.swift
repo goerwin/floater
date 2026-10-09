@@ -3,7 +3,6 @@ import SwiftUI
 
 struct PanelButton: NSViewRepresentable {
     let title: String
-    var symbol: String?
     var shortcut: PanelShortcut?
     var keyHint: String?
     var isEnabled = true
@@ -17,7 +16,9 @@ struct PanelButton: NSViewRepresentable {
 
     func makeNSView(context: Context) -> ActionButton {
         let button = ActionButton()
+        button.cell = ActionButtonCell(textCell: "")
         button.bezelStyle = .rounded
+        button.imagePosition = .noImage
         button.setButtonType(.momentaryPushIn)
         button.target = button
         button.action = #selector(ActionButton.activate(_:))
@@ -26,17 +27,18 @@ struct PanelButton: NSViewRepresentable {
     }
 
     func updateNSView(_ button: ActionButton, context: Context) {
-        button.image = symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
-        button.imagePosition = symbol == nil ? .noImage : .imageLeading
         button.isEnabled = isEnabled && context.environment.isEnabled
         button.controlSize = isSmall ? .small : .regular
         let font = NSFont.systemFont(ofSize: NSFont.systemFontSize(for: button.controlSize))
         button.font = font
-        let label = NSMutableAttributedString(string: title, attributes: [.font: font])
+        let textColor: NSColor = button.isEnabled
+            ? (isPrimary ? .alternateSelectedControlTextColor : .controlTextColor)
+            : .disabledControlTextColor
+        let label = NSMutableAttributedString(string: title, attributes: [.font: font, .foregroundColor: textColor])
         if let hint = shortcut?.label ?? keyHint {
             let color: NSColor = button.isEnabled
-                ? (isPrimary ? NSColor.alternateSelectedControlTextColor.withAlphaComponent(0.75) : .secondaryLabelColor)
-                : .disabledControlTextColor
+                ? (isPrimary ? textColor.withAlphaComponent(0.5) : .tertiaryLabelColor)
+                : .disabledControlTextColor.withAlphaComponent(0.15)
             label.append(NSAttributedString(string: " " + hint, attributes: [
                 .font: NSFont.systemFont(ofSize: font.pointSize - 2),
                 .foregroundColor: color,
@@ -47,7 +49,7 @@ struct PanelButton: NSViewRepresentable {
         button.keyEquivalentModifierMask = shortcut?.modifiers ?? []
         button.setAccessibilityLabel(title)
         button.setAccessibilityHelp(shortcut.map { "Keyboard shortcut: " + $0.label })
-        button.bezelColor = isPrimary ? .controlAccentColor : nil
+        button.bezelColor = isPrimary && button.isEnabled ? .controlAccentColor : nil
         button.onFocus = onFocus
         button.onActivate = action
         let focusChanged = button.wantsFocus != isFocused || button.prefersInitialFocus != prefersInitialFocus
@@ -59,6 +61,19 @@ struct PanelButton: NSViewRepresentable {
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: ActionButton, context: Context) -> CGSize? {
         nsView.intrinsicContentSize
+    }
+
+    final class ActionButtonCell: NSButtonCell {
+        override func drawTitle(_ title: NSAttributedString, withFrame frame: NSRect, in controlView: NSView) -> NSRect {
+            // Draw the attributed text directly so AppKit preserves each range's color.
+            let size = attributedTitle.size()
+            let bounds = NSRect(
+                x: frame.midX - size.width / 2, y: frame.midY - size.height / 2,
+                width: size.width, height: size.height
+            )
+            attributedTitle.draw(in: bounds)
+            return bounds
+        }
     }
 
     final class ActionButton: NSButton {

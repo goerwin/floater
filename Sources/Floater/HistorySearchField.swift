@@ -6,8 +6,8 @@ struct HistorySearchField: NSViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(field: self) }
 
-    func makeNSView(context: Context) -> SearchField {
-        let field = SearchField()
+    func makeNSView(context: Context) -> NSSearchField {
+        let field = NSSearchField()
         field.delegate = context.coordinator
         field.placeholderString = "Search prompts, input, and responses (\(PanelShortcut.find.label))"
         field.identifier = NSUserInterfaceItemIdentifier("historySearch")
@@ -15,17 +15,9 @@ struct HistorySearchField: NSViewRepresentable {
         return field
     }
 
-    func updateNSView(_ field: SearchField, context: Context) {
+    func updateNSView(_ field: NSSearchField, context: Context) {
         context.coordinator.field = self
         if field.stringValue != text { field.stringValue = text }
-    }
-
-    final class SearchField: NSSearchField {
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            window?.initialFirstResponder = self
-            window?.makeFirstResponder(self)
-        }
     }
 
     final class Coordinator: NSObject, NSSearchFieldDelegate {
