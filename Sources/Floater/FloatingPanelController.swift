@@ -1,28 +1,56 @@
 import AppKit
-import ApplicationServices
-import Carbon.HIToolbox
-import CoreGraphics
 import FloaterCore
 import SwiftUI
 
 @MainActor
 final class FloatingPanelController: NSObject, NSWindowDelegate {
     private let viewModel: FloaterViewModel
+    private let historyStore: HistoryStore
+    private let settings: AppSettings
+    private let accessibility: AccessibilityAccess
+    private let navigation = PanelNavigation()
+    private let contentState = PanelContentState()
+    private let historyState = HistoryViewState()
+    private var historyReturnsToPanel = false
+    private var responseOpenedFromHistory = false
+    private var historyReturnState: HistoryReturnState?
     private var panel: FloaterPanel?
-    private var hostingView: NSHostingView<FloaterPanelView>?
+    private var hostingView: NSHostingView<FloaterWindowView>?
     private var previousApplication: NSRunningApplication?
     private var resizeScheduled = false
 
-    init(viewModel: FloaterViewModel) {
+    private struct HistoryReturnState {
+        let request: PromptRequest?
+        let response: String
+        let errorMessage: String?
+        let prompt: String
+        let input: String
+        let title: String?
+        let isPromptExpanded: Bool
+    }
+
+    init(
+        viewModel: FloaterViewModel, historyStore: HistoryStore = HistoryStore(fileURL: nil),
+        settings: AppSettings = AppSettings(), accessibility: AccessibilityAccess = AccessibilityAccess()
+    ) {
         self.viewModel = viewModel
+        self.historyStore = historyStore
+        self.settings = settings
+        self.accessibility = accessibility
     }
 
     func show(previousApplication: NSRunningApplication?) {
+        navigation.isShowingHistory = false
+        resetHistorySession()
         self.previousApplication = previousApplication
         viewModel.setCanReplace(previousApplication != nil && previousApplication?.isTerminated == false)
+        showPanel()
+    }
+
+    private func showPanel() {
+        accessibility.refresh()
 
         let panel = panel ?? makePanel()
-        panel.title = windowTitle(for: viewModel.currentRequest)
         fitPanelToContent()
         if !panel.isVisible {
             panel.center()
@@ -33,30 +61,99 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     }
 
     func dismiss() {
-        panel?.orderOut(nil)
+        if navigation.isShowingHistory, historyReturnsToPanel {
+            if let state = historyReturnState {
+                viewModel.restore(request: state.request, response: state.response, errorMessage: state.errorMessage)
+                contentState.prompt = state.prompt
+                contentState.input = state.input
+                contentState.title = state.title
+                contentState.isPromptExpanded = state.isPromptExpanded
+            }
+            resetHistorySession()
+            navigation.isShowingHistory = false
+            fitPanelToContent()
+        } else if !navigation.isShowingHistory, responseOpenedFromHistory {
+            navigation.isShowingHistory = true
+            fitPanelToContent()
+        } else {
+            closeAndRestoreApplication()
+        }
+    }
+
+    private func closeAndRestoreApplication() {
+        hide()
         restorePreviousApplication()
+    }
+
+    func hide() {
+        panel?.orderOut(nil)
+    }
+
+    var isVisible: Bool { panel?.isVisible == true }
+    var window: NSWindow? { panel }
+    var isShowingHistory: Bool { navigation.isShowingHistory }
+
+    func showHistory(previousApplication: NSRunningApplication? = nil) {
+        guard !navigation.isShowingHistory else { showPanel(); return }
+        if !responseOpenedFromHistory { historyReturnsToPanel = isVisible }
+        if !isVisible {
+            self.previousApplication = previousApplication
+            viewModel.setCanReplace(previousApplication != nil && previousApplication?.isTerminated == false)
+        }
+        navigation.isShowingHistory = true
+        showPanel()
+    }
+
+    func openHistoryEntry(_ entry: HistoryEntry) {
+        if historyReturnsToPanel, !responseOpenedFromHistory {
+            historyReturnState = HistoryReturnState(
+                request: viewModel.currentRequest, response: viewModel.response, errorMessage: viewModel.errorMessage,
+                prompt: contentState.prompt, input: contentState.input, title: contentState.title,
+                isPromptExpanded: contentState.isPromptExpanded
+            )
+        }
+        viewModel.restore(entry)
+        responseOpenedFromHistory = true
+        navigation.isShowingHistory = false
+        showPanel()
+    }
+
+    func showComposer(previousApplication: NSRunningApplication?) {
+        contentState.clear()
+        viewModel.showComposer()
+        show(previousApplication: previousApplication)
+    }
+
+    private func resetHistorySession() {
+        historyReturnsToPanel = false
+        responseOpenedFromHistory = false
+        historyReturnState = nil
     }
 
     func copyAndDismiss() {
         guard !viewModel.response.isEmpty else { return }
         writeToPasteboard(viewModel.response)
-        dismiss()
+        closeAndRestoreApplication()
     }
 
     func replaceAndDismiss() {
         guard !viewModel.response.isEmpty,
               let application = previousApplication,
               !application.isTerminated else { return }
-        guard requestAccessibilityAccessIfNeeded() else { return }
-
-        writeToPasteboard(viewModel.response)
-        panel?.orderOut(nil)
-        application.activate()
-
-        let processID = application.processIdentifier
-        Task {
-            try? await Task.sleep(for: .milliseconds(300))
-            postPaste(to: processID)
+        viewModel.setActionError(nil)
+        accessibility.refresh()
+        guard accessibility.isGranted else {
+            viewModel.setActionError("Allow Floater in System Settings > Privacy & Security > Accessibility, then try Replace again.")
+            return
+        }
+        do {
+            try BackgroundTextReplacer.replace(
+                viewModel.response, in: application,
+                allowWholeField: settings.replaceWholeFieldWhenUnselected
+            )
+            closeAndRestoreApplication()
+        } catch {
+            viewModel.setActionError(error.localizedDescription)
         }
     }
 
@@ -80,6 +177,10 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         return false
     }
 
+    func windowDidBecomeKey(_ notification: Notification) {
+        accessibility.refresh()
+    }
+
     private func makePanel() -> FloaterPanel {
         let panel = FloaterPanel(
             contentRect: NSRect(
@@ -94,6 +195,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         )
         panel.title = windowTitle(for: viewModel.currentRequest)
         panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = false
         panel.isMovableByWindowBackground = false
         panel.isReleasedWhenClosed = false
         panel.isOpaque = false
@@ -104,16 +206,28 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         panel.maxSize = NSSize(width: FloaterPanelLayout.width, height: FloaterPanelLayout.maximumHeight)
         panel.delegate = self
 
-        let hostingView = NSHostingView(
-            rootView: FloaterPanelView(
+        let hostingView = NSHostingView(rootView: FloaterWindowView(
+            navigation: navigation,
+            panel: FloaterPanelView(
                 viewModel: viewModel,
                 onSubmit: { [weak self] request in self?.start(request) },
                 onCopy: { [weak self] in self?.copyAndDismiss() },
                 onReplace: { [weak self] in self?.replaceAndDismiss() },
                 onDismiss: { [weak self] in self?.dismiss() },
-                onContentChange: { [weak self] in self?.schedulePanelResize() }
-            )
-        )
+                onContentChange: { [weak self] in self?.schedulePanelResize() },
+                onHistory: { [weak self] in self?.showHistory() },
+                contentState: contentState,
+                accessibility: accessibility,
+                onNew: { [weak self] in self?.resetHistorySession() }
+            ),
+            history: HistoryView(
+                store: historyStore, onOpen: { [weak self] entry in self?.openHistoryEntry(entry) },
+                onDismiss: { [weak self] in self?.dismiss() },
+                onNew: { [weak self] in self?.showComposer(previousApplication: self?.previousApplication) },
+                state: historyState
+            ),
+            onContentChange: { [weak self] in self?.schedulePanelResize() }
+        ))
         hostingView.sizingOptions = [.intrinsicContentSize]
         panel.contentView = hostingView
 
@@ -149,13 +263,18 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
 
     private func fitPanelToContent() {
         guard let panel, let hostingView else { return }
+        panel.title = navigation.isShowingHistory ? "History" : windowTitle(for: viewModel.currentRequest)
 
         hostingView.invalidateIntrinsicContentSize()
         hostingView.layoutSubtreeIfNeeded()
-        let maximumHeight = viewModel.currentRequest == nil
+        let maximumHeight = navigation.isShowingHistory
+            ? max(360, (panel.screen ?? NSScreen.main)?.visibleFrame.height ?? 900) - 24
+            : viewModel.currentRequest == nil
             ? FloaterPanelLayout.maximumEditingHeight
             : FloaterPanelLayout.maximumHeight
-        panel.maxSize = NSSize(width: FloaterPanelLayout.width, height: maximumHeight)
+        let width: CGFloat = navigation.isShowingHistory ? 620 : FloaterPanelLayout.width
+        panel.minSize = NSSize(width: width, height: FloaterPanelLayout.minimumHeight)
+        panel.maxSize = NSSize(width: width, height: maximumHeight)
         let height = min(
             maximumHeight,
             max(FloaterPanelLayout.minimumHeight, ceil(hostingView.fittingSize.height))
@@ -163,11 +282,15 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
 
         var frame = panel.frame
         frame.origin.y = frame.maxY - height
+        frame.size.width = width
+        frame.size.height = height
         if let screen = panel.screen {
             frame.origin.y = max(screen.visibleFrame.minY + 12, frame.origin.y)
+            frame.origin.x = min(
+                max(screen.visibleFrame.minX + 12, frame.origin.x),
+                screen.visibleFrame.maxX - width - 12
+            )
         }
-        frame.size.width = FloaterPanelLayout.width
-        frame.size.height = height
         panel.setFrame(frame, display: true)
     }
 
@@ -181,36 +304,31 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         guard let application = previousApplication, !application.isTerminated else { return }
         application.activate()
     }
-
-    private func requestAccessibilityAccessIfNeeded() -> Bool {
-        guard !AXIsProcessTrusted() else { return true }
-
-        let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
-        _ = AXIsProcessTrustedWithOptions(options)
-        return false
-    }
-
-    private func postPaste(to processID: pid_t) {
-        guard let source = CGEventSource(stateID: .hidSystemState),
-              let keyDown = CGEvent(
-                keyboardEventSource: source,
-                virtualKey: CGKeyCode(kVK_ANSI_V),
-                keyDown: true
-              ),
-              let keyUp = CGEvent(
-                keyboardEventSource: source,
-                virtualKey: CGKeyCode(kVK_ANSI_V),
-                keyDown: false
-              ) else { return }
-
-        keyDown.flags = .maskCommand
-        keyUp.flags = .maskCommand
-        keyDown.postToPid(processID)
-        keyUp.postToPid(processID)
-    }
 }
 
-private final class FloaterPanel: NSPanel {
+final class FloaterPanel: NSPanel {
+    var onKeyDown: ((NSEvent) -> Bool)?
+    weak var keyboardHandlerOwner: AnyObject?
+
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+
+    override func becomeKey() {
+        super.becomeKey()
+        if let initialFirstResponder { makeFirstResponder(initialFirstResponder) }
+    }
+
+    override func sendEvent(_ event: NSEvent) {
+        if attachedSheet == nil, event.type == .keyDown, onKeyDown?(event) == true { return }
+        if attachedSheet == nil, event.type == .keyDown,
+           let button = firstResponder as? PanelButton.ActionButton, button.handleActivation(event) { return }
+        super.sendEvent(event)
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if attachedSheet == nil, event.type == .keyDown, onKeyDown?(event) == true { return true }
+        if attachedSheet == nil, event.type == .keyDown,
+           let button = firstResponder as? PanelButton.ActionButton, button.handleActivation(event) { return true }
+        return super.performKeyEquivalent(with: event)
+    }
 }

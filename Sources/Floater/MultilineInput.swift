@@ -6,8 +6,9 @@ struct MultilineInput: View {
     let placeholder: String
     let label: String
     let isFocused: Bool
+    var prefersInitialFocus = false
+    var identifier: String?
     let onFocus: () -> Void
-    let onMoveFocus: (Bool) -> Void
     let onSubmit: () -> Void
 
     var body: some View {
@@ -15,8 +16,9 @@ struct MultilineInput: View {
             text: $text,
             label: label,
             isFocused: isFocused,
+            prefersInitialFocus: prefersInitialFocus,
+            identifier: identifier,
             onFocus: onFocus,
-            onMoveFocus: onMoveFocus,
             onSubmit: onSubmit
         )
         .overlay(alignment: .topLeading) {
@@ -42,8 +44,9 @@ private struct NativeInput: NSViewRepresentable {
     @Binding var text: String
     let label: String
     let isFocused: Bool
+    let prefersInitialFocus: Bool
+    let identifier: String?
     let onFocus: () -> Void
-    let onMoveFocus: (Bool) -> Void
     let onSubmit: () -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -75,10 +78,12 @@ private struct NativeInput: NSViewRepresentable {
             view.string = text
         }
         view.onFocus = onFocus
-        view.onMoveFocus = onMoveFocus
         view.onSubmit = onSubmit
+        let focusChanged = view.wantsFocus != isFocused || view.prefersInitialFocus != prefersInitialFocus
         view.wantsFocus = isFocused
-        view.focusIfNeeded()
+        view.prefersInitialFocus = prefersInitialFocus
+        view.identifier = identifier.map { NSUserInterfaceItemIdentifier($0) }
+        if focusChanged { view.focusIfNeeded() }
         view.invalidateIntrinsicContentSize()
     }
 
@@ -108,8 +113,8 @@ private struct NativeInput: NSViewRepresentable {
 
 private final class InputTextView: NSTextView {
     var wantsFocus = false
+    var prefersInitialFocus = false
     var onFocus: (() -> Void)?
-    var onMoveFocus: ((Bool) -> Void)?
     var onSubmit: (() -> Void)?
 
     override func viewDidMoveToWindow() {
@@ -118,24 +123,35 @@ private final class InputTextView: NSTextView {
     }
 
     func focusIfNeeded() {
-        guard wantsFocus, let window, window.firstResponder !== self else { return }
+        guard let window else { return }
+        if prefersInitialFocus { window.initialFirstResponder = self }
+        guard wantsFocus, window.firstResponder !== self else { return }
         window.makeFirstResponder(self)
     }
 
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()
-        if accepted { onFocus?() }
+        if accepted {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.window?.firstResponder === self else { return }
+                self.onFocus?()
+            }
+        }
         return accepted
     }
 
     override func keyDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection([.shift, .command, .option, .control])
-        if event.keyCode == 48, modifiers.subtracting(.shift).isEmpty {
-            onMoveFocus?(modifiers.contains(.shift))
+        if event.keyCode == 48 {
+            if modifiers.isEmpty || modifiers == .shift {
+                insertTab(nil)
+            } else {
+                super.keyDown(with: event)
+            }
         } else if event.keyCode == 36 || event.keyCode == 76 {
-            if modifiers == .shift {
+            if modifiers.isEmpty || modifiers == .shift {
                 insertNewline(nil)
-            } else if modifiers.isEmpty || modifiers == .command {
+            } else if modifiers == .command {
                 onSubmit?()
             } else {
                 super.keyDown(with: event)

@@ -6,14 +6,21 @@ import FloaterCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static weak var shared: AppDelegate?
 
-    private let viewModel = FloaterViewModel(provider: FoundationModelsProvider())
+    let historyStore = HistoryStore()
+    let settings = AppSettings()
+    let accessibility = AccessibilityAccess()
+    private lazy var viewModel = FloaterViewModel(
+        provider: FoundationModelsProvider(), historyStore: historyStore
+    )
     private var panelController: FloatingPanelController!
     private var activationObserver: NSObjectProtocol?
     private var lastExternalApplication: NSRunningApplication?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Self.shared = self
-        panelController = FloatingPanelController(viewModel: viewModel)
+        panelController = FloatingPanelController(
+            viewModel: viewModel, historyStore: historyStore, settings: settings, accessibility: accessibility
+        )
         NSApp.setActivationPolicy(.accessory)
         observeExternalApplications()
         registerURLHandler()
@@ -38,8 +45,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func showComposer() {
-        viewModel.showComposer()
-        panelController.show(previousApplication: activeExternalApplication)
+        panelController.showComposer(previousApplication: activeExternalApplication)
+    }
+
+    func openHistoryEntry(_ entry: HistoryEntry) {
+        panelController.openHistoryEntry(entry)
+    }
+
+    func showHistory() {
+        panelController.showHistory(previousApplication: activeExternalApplication)
     }
 
     private var activeExternalApplication: NSRunningApplication? {
@@ -70,6 +84,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func observeExternalApplications() {
+        if let application = NSWorkspace.shared.frontmostApplication,
+           application.bundleIdentifier != Bundle.main.bundleIdentifier {
+            lastExternalApplication = application
+        }
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,

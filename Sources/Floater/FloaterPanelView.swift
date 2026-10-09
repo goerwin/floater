@@ -9,15 +9,15 @@ struct FloaterPanelView: View {
     let onReplace: () -> Void
     let onDismiss: () -> Void
     let onContentChange: () -> Void
+    var onHistory: () -> Void = {}
 
-    @State private var draftPrompt = ""
-    @State private var draftInput = ""
-    @State private var draftTitle: String?
-    @State private var isPromptExpanded = false
+    @ObservedObject var contentState = PanelContentState()
+    @ObservedObject var accessibility = AccessibilityAccess()
+    var onNew: () -> Void = {}
     @State private var composerFieldsHeight: CGFloat = 160
-    @FocusState private var focusedControl: FocusedControl?
+    @State private var focusedControl: FocusedControl?
 
-    private enum FocusedControl: Hashable {
+    private enum FocusedControl: String {
         case prompt
         case input
         case run
@@ -25,6 +25,9 @@ struct FloaterPanelView: View {
         case edit
         case replace
         case dismiss
+        case history
+        case new
+        case accessibility
     }
 
     var body: some View {
@@ -46,8 +49,14 @@ struct FloaterPanelView: View {
             RoundedRectangle(cornerRadius: 18)
                 .stroke(.white.opacity(0.18), lineWidth: 1)
         }
+        .background {
+            PanelKeyboardHandler(onKeyDown: handleKeyDown)
+                .frame(width: 0, height: 0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
         .onChange(of: viewModel.currentRequest) { _, request in
-            isPromptExpanded = false
+            contentState.isPromptExpanded = false
             DispatchQueue.main.async {
                 focusedControl = viewModel.currentRequest == nil ? .prompt : .copy
             }
@@ -56,35 +65,41 @@ struct FloaterPanelView: View {
         .onChange(of: viewModel.response) { _, _ in onContentChange() }
         .onChange(of: viewModel.isGenerating) { _, _ in onContentChange() }
         .onChange(of: viewModel.errorMessage) { _, _ in onContentChange() }
-        .onChange(of: isPromptExpanded) { _, _ in onContentChange() }
+        .onChange(of: accessibility.isGranted) { _, _ in onContentChange() }
+        .onChange(of: viewModel.actionErrorMessage) { _, _ in onContentChange() }
+        .onChange(of: contentState.isPromptExpanded) { _, _ in onContentChange() }
         .onChange(of: composerFieldsHeight) { _, _ in onContentChange() }
-        .onKeyPress(.tab, phases: .down) { keyPress in
-            moveFocus(backwards: keyPress.modifiers.contains(.shift))
-            return .handled
-        }
     }
 
     private var header: some View {
         HStack(spacing: 8) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("AI")
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("AI")
 
-            Text(windowTitle)
-                .font(.system(size: 14, weight: .semibold))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .accessibilityAddTraits(.isHeader)
-            Spacer(minLength: 4)
-            if viewModel.isGenerating {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel("Generating response")
+                Text(windowTitle)
+                    .font(.system(size: 14, weight: .semibold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 4)
+                if viewModel.isGenerating {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Generating response")
+                }
             }
+            .gesture(WindowDragGesture())
+
+            panelButton("New", symbol: "plus", control: .new, action: newRequest)
+                .help("New request (Command+N)")
+
+            panelButton("History", symbol: "clock.arrow.circlepath", control: .history, action: onHistory)
+                .help("Open history (Command+H)")
         }
-        .frame(height: 20)
-        .gesture(WindowDragGesture())
+        .frame(minHeight: 24)
     }
 
     private var windowTitle: String {
@@ -104,13 +119,13 @@ struct FloaterPanelView: View {
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
 
-                    editor(text: $draftPrompt, placeholder: "What should Floater do?", label: "Prompt", control: .prompt)
+                    editor(text: $contentState.prompt, placeholder: "What should Floater do?", label: "Prompt", control: .prompt)
 
                     Text("Optional input")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
 
-                    editor(text: $draftInput, placeholder: "Add input (optional)", label: "Optional input", control: .input)
+                    editor(text: $contentState.input, placeholder: "Add input (optional)", label: "Optional input", control: .input)
                 }
                 .padding(1)
                 .fixedSize(horizontal: false, vertical: true)
@@ -120,27 +135,12 @@ struct FloaterPanelView: View {
 
             HStack(spacing: 8) {
                 Spacer()
-                Button("Dismiss", action: dismissComposer)
-                    .keyboardShortcut(.escape, modifiers: [])
-                    .focusable()
-                    .focused($focusedControl, equals: .dismiss)
-                    .onKeyPress(.return) {
-                        dismissComposer()
-                        return .handled
-                    }
-
-                Button(action: submit) {
-                    Label("Run", systemImage: "arrow.up.right")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(draftPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .focusable()
-                .focused($focusedControl, equals: .run)
-                .onKeyPress(.return) {
-                    submit()
-                    return .handled
-                }
-                .keyboardShortcut(.return, modifiers: .command)
+                panelButton("Dismiss", control: .dismiss, action: dismissComposer)
+                panelButton(
+                    "Run", symbol: "arrow.up.right", control: .run,
+                    enabled: !contentState.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                    primary: true, action: submit
+                )
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -157,49 +157,159 @@ struct FloaterPanelView: View {
             placeholder: placeholder,
             label: label,
             isFocused: focusedControl == control,
-            onFocus: { focusedControl = control },
-            onMoveFocus: { moveFocus(from: control, backwards: $0) },
+            prefersInitialFocus: control == .prompt,
+            identifier: control.rawValue,
+            onFocus: { if focusedControl != control { focusedControl = control } },
             onSubmit: submit
         )
-        .focused($focusedControl, equals: control)
     }
 
-    private func moveFocus(from control: FocusedControl? = nil, backwards: Bool) {
+    private func panelButton(
+        _ title: String, symbol: String? = nil, control: FocusedControl,
+        enabled: Bool = true, primary: Bool = false, small: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        PanelButton(
+            title: title, symbol: symbol, shortcut: shortcut(for: control), isEnabled: enabled, isPrimary: primary, isSmall: small,
+            isFocused: focusedControl == control,
+            prefersInitialFocus: control == .copy && viewModel.currentRequest != nil,
+            identifier: control.rawValue,
+            onFocus: { if focusedControl != control { focusedControl = control } }, action: action
+        )
+        .fixedSize()
+        .controlSize(small ? .small : .regular)
+        .disabled(!enabled)
+    }
+
+    private func shortcut(for control: FocusedControl) -> PanelShortcut? {
+        switch control {
+        case .copy: .copy
+        case .edit: .edit
+        case .replace: .replace
+        case .dismiss: .dismiss
+        case .history: .history
+        case .run: .run
+        case .new: .new
+        default: nil
+        }
+    }
+
+    private func handleKeyDown(_ event: NSEvent, window: NSWindow) -> Bool {
+        let modifiers = event.modifierFlags.intersection([.shift, .command, .option, .control])
+        if event.keyCode == 48, modifiers.subtracting([.option, .shift]).isEmpty {
+            if !modifiers.contains(.option), let editor = window.firstResponder as? NSTextView, editor.isEditable {
+                return false
+            }
+            let current = (window.firstResponder as? NSView)?.identifier
+                .flatMap { FocusedControl(rawValue: $0.rawValue) }
+            moveFocus(from: current, backwards: modifiers.contains(.shift), in: window)
+            return true
+        }
+        if event.keyCode == 53, modifiers.isEmpty {
+            viewModel.currentRequest == nil ? dismissComposer() : onDismiss()
+            return true
+        }
+        if PanelShortcut.new.matches(event) {
+            newRequest()
+            return true
+        }
+        if viewModel.currentRequest == nil, modifiers == .command, [36, 76].contains(event.keyCode) {
+            submit()
+            return true
+        }
+        if PanelShortcut.history.matches(event) {
+            onHistory()
+            return true
+        }
+        if viewModel.currentRequest == nil, PanelShortcut.run.matches(event) {
+            submit()
+            return true
+        }
+        if viewModel.currentRequest != nil, PanelShortcut.replace.matches(event) {
+            if accessibility.isGranted && viewModel.canReplace && !viewModel.response.isEmpty { onReplace() }
+            return true
+        }
+        guard viewModel.currentRequest != nil, modifiers == .command else { return false }
+        switch event.charactersIgnoringModifiers?.lowercased() {
+        case "c":
+            let action = #selector(NSText.copy(_:))
+            let item = NSMenuItem(title: "Copy", action: action, keyEquivalent: "c")
+            if let target = NSApp.target(forAction: action, to: nil, from: nil),
+               (target as? NSUserInterfaceValidations)?.validateUserInterfaceItem(item) == true
+                || (target as? NSMenuItemValidation)?.validateMenuItem(item) == true {
+                NSApp.sendAction(action, to: target, from: nil)
+            } else {
+                onCopy()
+            }
+            return true
+        case "e":
+            DispatchQueue.main.async(execute: editRequest)
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func moveFocus(from current: FocusedControl?, backwards: Bool, in window: NSWindow) {
         let controls: [FocusedControl]
         if viewModel.currentRequest == nil {
             controls = [.prompt, .input, .dismiss]
-                + (draftPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : [.run])
+                + (contentState.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : [.run])
+                + [.history, .new]
         } else {
             controls = [.copy, .edit]
-                + (viewModel.response.isEmpty || !viewModel.canReplace ? [] : [.replace])
+                + (viewModel.response.isEmpty || !viewModel.canReplace || !accessibility.isGranted ? [] : [.replace])
+                + (accessibility.isGranted ? [] : [.accessibility])
                 + [.dismiss]
+                + [.history, .new]
         }
-        guard let current = control ?? focusedControl, let index = controls.firstIndex(of: current) else {
-            focusedControl = backwards ? controls.last : controls.first
-            return
+        let destination: FocusedControl?
+        if let current = current ?? focusedControl, let index = controls.firstIndex(of: current) {
+            destination = controls[(index + (backwards ? controls.count - 1 : 1)) % controls.count]
+        } else {
+            destination = backwards ? controls.last : controls.first
         }
-        focusedControl = controls[(index + (backwards ? controls.count - 1 : 1)) % controls.count]
+        guard let destination, let root = window.contentView,
+              let view = root.firstDescendant(where: { $0.identifier?.rawValue == destination.rawValue }) else { return }
+        focusedControl = destination
+        window.makeFirstResponder(view)
     }
 
     private var responseView: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let request = viewModel.currentRequest {
                 Button {
-                    isPromptExpanded.toggle()
+                    contentState.isPromptExpanded.toggle()
                 } label: {
                     Text(request.prompt)
                         .font(.system(size: 12))
-                        .lineLimit(isPromptExpanded ? nil : 2)
+                        .lineLimit(contentState.isPromptExpanded ? nil : 2)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .frame(height: promptHeight(for: request.prompt), alignment: .topLeading)
                 }
                 .buttonStyle(.plain)
                 .focusable(false)
-                .help(isPromptExpanded ? "Collapse prompt" : "Show full prompt")
+                .help(contentState.isPromptExpanded ? "Collapse prompt" : "Show full prompt")
             }
 
             responseContent
+            if let message = viewModel.actionErrorMessage {
+                Text(message)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+            }
+            if !accessibility.isGranted {
+                HStack {
+                    Text("Replace requires Accessibility access.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    panelButton("Enable Accessibility", control: .accessibility, small: true, action: accessibility.request)
+                }
+            }
             actionBar
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -257,14 +367,19 @@ struct FloaterPanelView: View {
     }
 
     private var responseContentHeightLimit: CGFloat {
-        guard isPromptExpanded, let prompt = viewModel.currentRequest?.prompt else {
-            return FloaterPanelLayout.maximumResponseHeight
+        let errorHeight = viewModel.actionErrorMessage.map {
+            measuredTextHeight($0, width: FloaterPanelLayout.contentWidth, fontSize: 12) + 8
+        } ?? 0
+        let permissionHeight: CGFloat = accessibility.isGranted ? 0 : 36
+        let maximumHeight = max(18, FloaterPanelLayout.maximumResponseHeight - errorHeight - permissionHeight)
+        guard contentState.isPromptExpanded, let prompt = viewModel.currentRequest?.prompt else {
+            return maximumHeight
         }
 
         let expandedPromptHeight = promptHeight(for: prompt)
         let collapsedPromptHeight = summaryHeight(for: prompt)
         let extraPromptHeight = max(0, expandedPromptHeight - collapsedPromptHeight)
-        return max(18, FloaterPanelLayout.maximumResponseHeight - extraPromptHeight)
+        return max(18, maximumHeight - extraPromptHeight)
     }
 
     private func summaryHeight(for text: String) -> CGFloat {
@@ -275,7 +390,7 @@ struct FloaterPanelView: View {
     }
 
     private func promptHeight(for text: String) -> CGFloat {
-        isPromptExpanded
+        contentState.isPromptExpanded
             ? measuredTextHeight(text, width: FloaterPanelLayout.contentWidth, fontSize: 12)
             : summaryHeight(for: text)
     }
@@ -299,71 +414,50 @@ struct FloaterPanelView: View {
     private var actionBar: some View {
         HStack(spacing: 10) {
             Spacer()
-
-            Button(action: onCopy) {
-                Label("Copy", systemImage: "doc.on.doc")
-            }
-            .focusable()
-            .focused($focusedControl, equals: .copy)
-            .onKeyPress(.return) {
-                onCopy()
-                return .handled
-            }
-
-            Button(action: editRequest) {
-                Label("Edit", systemImage: "pencil")
-            }
-            .help("Edit the prompt and run it again.")
-            .focusable()
-            .focused($focusedControl, equals: .edit)
-            .onKeyPress(.return) {
-                DispatchQueue.main.async(execute: editRequest)
-                return .handled
-            }
-
-            Button(action: onReplace) {
-                Label("Replace", systemImage: "arrow.uturn.down")
-            }
-            .disabled(viewModel.response.isEmpty || !viewModel.canReplace)
-            .help("Paste the result into the previous app. Requires Accessibility access.")
-            .focusable()
-            .focused($focusedControl, equals: .replace)
-            .onKeyPress(.return) {
-                onReplace()
-                return .handled
-            }
-
-            Button("Dismiss", action: onDismiss)
-                .keyboardShortcut(.escape, modifiers: [])
-                .focusable()
-                .focused($focusedControl, equals: .dismiss)
-                .onKeyPress(.return) {
-                    onDismiss()
-                    return .handled
-                }
+            panelButton("Copy", symbol: "doc.on.doc", control: .copy, action: onCopy)
+                .help("Copy the response (Command+C)")
+            panelButton("Edit", symbol: "pencil", control: .edit, action: editRequest)
+                .help("Edit the prompt and run it again (Command+E)")
+            panelButton(
+                "Replace", symbol: "arrow.uturn.down", control: .replace,
+                enabled: !viewModel.response.isEmpty && viewModel.canReplace && accessibility.isGranted, action: onReplace
+            )
+            .help("Replace text in the previous app. Requires Accessibility access.")
+            panelButton("Dismiss", control: .dismiss, action: onDismiss)
         }
     }
 
+    private func newRequest() {
+        contentState.prompt = ""
+        contentState.input = ""
+        contentState.title = nil
+        contentState.isPromptExpanded = false
+        viewModel.showComposer()
+        focusedControl = .prompt
+        onNew()
+        onContentChange()
+    }
+
     private func submit() {
-        let prompt = draftPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prompt = contentState.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else { return }
-        let request = PromptRequest(prompt: prompt, input: draftInput, title: draftTitle)
-        draftTitle = nil
+        let request = PromptRequest(prompt: prompt, input: contentState.input, title: contentState.title)
+        contentState.title = nil
         focusedControl = nil
         onSubmit(request)
     }
 
     private func editRequest() {
         guard let request = viewModel.currentRequest else { return }
-        draftPrompt = request.prompt
-        draftInput = request.input
-        draftTitle = request.title
-        isPromptExpanded = false
+        contentState.prompt = request.prompt
+        contentState.input = request.input
+        contentState.title = request.title
+        contentState.isPromptExpanded = false
         viewModel.showComposer()
     }
 
     private func dismissComposer() {
-        draftTitle = nil
+        contentState.title = nil
         onDismiss()
     }
 }

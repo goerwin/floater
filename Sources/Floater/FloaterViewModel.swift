@@ -8,18 +8,25 @@ final class FloaterViewModel: ObservableObject {
     @Published private(set) var response = ""
     @Published private(set) var isGenerating = false
     @Published private(set) var errorMessage: String?
+    @Published private(set) var actionErrorMessage: String?
     @Published private(set) var canReplace = false
 
     private let provider: any AIProvider
+    private let historyStore: HistoryStore?
     private var generationTask: Task<Void, Never>?
     private var activeGenerationID: UUID?
 
-    init(provider: any AIProvider) {
+    init(provider: any AIProvider, historyStore: HistoryStore? = nil) {
         self.provider = provider
+        self.historyStore = historyStore
     }
 
     func setCanReplace(_ value: Bool) {
         canReplace = value
+    }
+
+    func setActionError(_ message: String?) {
+        actionErrorMessage = message
     }
 
     func showComposer() {
@@ -30,6 +37,7 @@ final class FloaterViewModel: ObservableObject {
         response = ""
         isGenerating = false
         errorMessage = nil
+        actionErrorMessage = nil
     }
 
     func start(_ request: PromptRequest) {
@@ -40,6 +48,7 @@ final class FloaterViewModel: ObservableObject {
         currentRequest = request
         response = ""
         errorMessage = nil
+        actionErrorMessage = nil
         isGenerating = true
 
         let provider = self.provider
@@ -53,6 +62,7 @@ final class FloaterViewModel: ObservableObject {
                 guard let self, self.activeGenerationID == generationID,
                       !Task.isCancelled else { return }
                 self.isGenerating = false
+                self.historyStore?.record(request, response: self.response)
             } catch is CancellationError {
                 return
             } catch {
@@ -62,5 +72,16 @@ final class FloaterViewModel: ObservableObject {
                 self.errorMessage = error.localizedDescription
             }
         }
+    }
+
+    func restore(_ entry: HistoryEntry) {
+        restore(request: entry.request, response: entry.response)
+    }
+
+    func restore(request: PromptRequest?, response: String, errorMessage: String? = nil) {
+        showComposer()
+        currentRequest = request
+        self.response = response
+        self.errorMessage = errorMessage
     }
 }

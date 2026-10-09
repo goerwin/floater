@@ -1,6 +1,6 @@
 import Foundation
 
-public struct PromptRequest: Equatable, Sendable {
+public struct PromptRequest: Codable, Equatable, Sendable {
     public let prompt: String
     public let input: String
     public let title: String?

@@ -17,7 +17,7 @@ final class FoundationModelsProvider: AIProvider {
         )
         let prompt = request.input.isEmpty
             ? request.prompt
-            : "\(request.prompt)\n\nInput:\n\(request.input)"
+            : "\(request.prompt)\n\n<transcript>\n\(request.input)\n</transcript>"
 
         for try await snapshot in session.streamResponse(to: prompt) {
             try Task.checkCancellation()
