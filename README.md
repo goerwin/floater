@@ -13,7 +13,7 @@ Requires macOS 26 or later and a Mac with Apple Intelligence enabled and ready.
 - **Floating window:** stays above other apps and can be dragged anywhere.
 - **New Request:** write a prompt with optional input text.
 - **Results:** copy the full response or a selection, edit your request, and run it again.
-- **Replace:** update selected text in the previous app, or the whole field when nothing is selected. Requires Accessibility permission.
+- **Replace:** paste over selected text in the previous app, or the whole field when nothing is selected. Keeps the result on your clipboard. Requires Accessibility permission.
 - **History:** search and reopen the latest 100 successful results, saved locally.
 - **Automation:** send requests through the CLI or `floater://` URLs.
 
