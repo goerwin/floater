@@ -29,12 +29,12 @@ Run these from the project directory:
 
 - **make test** runs the Swift test suite.
 - **make test-app** rebuilds the app and runs smoke tests through macOS. The terminal or app running it needs Accessibility access. Use `Scripts/test-app.sh --no-build` to test the existing bundle.
-- **make dev** quits Floater, rebuilds the debug app, and opens the composer. Set `FLOATER_PROMPT`, `FLOATER_INPUT`, and optionally `FLOATER_TITLE` to run a request directly.
+- **make dev-app** quits Floater, rebuilds the local debug app, and opens the composer without running tests. Set `FLOATER_PROMPT`, `FLOATER_INPUT`, and optionally `FLOATER_TITLE` to run a request directly.
 
 Debug builds use version `0.0.0` and skip bundle signing, so development doesn't require an Apple account or signing certificate. macOS may still give executables a linker-generated ad hoc signature. Explicit signing through `CODE_SIGNING_IDENTITY` applies only to release builds. The smoke tests don't exercise Replace, which requires Accessibility permission for Floater; the runner separately needs Accessibility permission to automate the UI.
 
 ```sh
-make dev FLOATER_PROMPT="Summarize this text" FLOATER_INPUT="Done. Committed" FLOATER_TITLE="Quick test"
+make dev-app FLOATER_PROMPT="Summarize this text" FLOATER_INPUT="Done. Committed" FLOATER_TITLE="Quick test"
 ```
 - **make install** builds a release app and copies it to /Applications. macOS will ask for administrator access.
 - **make release VERSION=0.1.0** builds a versioned DMG and checksum.
