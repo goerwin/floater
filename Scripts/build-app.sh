@@ -58,6 +58,14 @@ cp "$FLOATER_ROOT_DIR/Resources/Generated/Floater.icns" "$FLOATER_APP_BUNDLE/Con
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $FLOATER_VERSION" "$FLOATER_APP_BUNDLE/Contents/Info.plist"
 printf 'APPL????' > "$FLOATER_APP_BUNDLE/Contents/PkgInfo"
 
+find_development_identity() {
+    security find-identity -v -p codesigning 2>/dev/null \
+        | grep 'Apple Development' \
+        | grep -v 'CSSMERR_TP_CERT_REVOKED' \
+        | head -n 1 \
+        | awk '{print $2}'
+}
+
 if [[ "$FLOATER_BUILD_CONFIGURATION" != debug && -n "${CODE_SIGNING_IDENTITY:-}" ]]; then
     FLOATER_EMBEDDED_SPARKLE="$FLOATER_APP_BUNDLE/Contents/Frameworks/Sparkle.framework/Versions/B"
     for component in XPCServices/Installer.xpc XPCServices/Downloader.xpc Updater.app Autoupdate; do
@@ -68,7 +76,15 @@ if [[ "$FLOATER_BUILD_CONFIGURATION" != debug && -n "${CODE_SIGNING_IDENTITY:-}"
     /usr/bin/codesign --force --options runtime --timestamp --sign "$CODE_SIGNING_IDENTITY" "$FLOATER_APP_BUNDLE"
     /usr/bin/codesign --verify --deep --strict --verbose=2 "$FLOATER_APP_BUNDLE"
 else
-    /usr/bin/codesign --force --sign - "$FLOATER_APP_BUNDLE"
+    # Ad-hoc signatures change with every build, which drops the app's
+    # Accessibility permission. A stable development identity keeps it.
+    FLOATER_DEV_SIGNING_IDENTITY="${CODE_SIGNING_IDENTITY:-$(find_development_identity)}"
+    if [[ -n "$FLOATER_DEV_SIGNING_IDENTITY" ]]; then
+        /usr/bin/codesign --force --sign "$FLOATER_DEV_SIGNING_IDENTITY" "$FLOATER_APP_BUNDLE"
+        printf 'Signed with development identity %s\n' "$FLOATER_DEV_SIGNING_IDENTITY"
+    else
+        /usr/bin/codesign --force --sign - "$FLOATER_APP_BUNDLE"
+    fi
 fi
 
 printf 'Built %s\n' "$FLOATER_APP_BUNDLE"
