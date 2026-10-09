@@ -20,7 +20,7 @@ final class TextReplacementTests: XCTestCase {
                 captures += 1
                 return target
             },
-            replaceText: { text, capturedTarget, _ in
+            replaceText: { text, capturedTarget, _, _ in
                 calls += 1
                 XCTAssertEqual(text, "Replacement")
                 XCTAssertTrue(capturedTarget as? NativePasteTarget === target)
@@ -154,6 +154,24 @@ final class TextReplacementTests: XCTestCase {
         }
         XCTAssertEqual(editor.string, "Original contents")
         XCTAssertEqual(target.commands, [.selectAll])
+        XCTAssertEqual(pasteboard.string(forType: .string), "result")
+    }
+
+    func testSelectionOnlyPasteDoesNotSelectAllWhenTheSelectionIsGone() async throws {
+        let editor = makeEditor("Whole field")
+        let pasteboard = testPasteboard()
+        let target = NativePasteTarget(editor, pasteboard: pasteboard)
+        target.selectionOverride = TextSelection.none
+        do {
+            try await TextReplacement.apply(
+                "result", to: target, allowWholeField: true, selectionOnly: true, pasteboard: pasteboard
+            )
+            XCTFail("Expected selectionRequired")
+        } catch {
+            XCTAssertEqual(error as? TextReplacementError, .selectionRequired)
+        }
+        XCTAssertTrue(target.commands.isEmpty)
+        XCTAssertEqual(editor.string, "Whole field")
         XCTAssertEqual(pasteboard.string(forType: .string), "result")
     }
 

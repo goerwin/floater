@@ -62,29 +62,42 @@ enum TextReplacementError: LocalizedError {
 enum TextReplacement {
     static func apply(
         _ text: String, to target: any TextPasteTarget, allowWholeField: Bool,
-        pasteboard: NSPasteboard = .general
+        selectionOnly: Bool = false, pasteboard: NSPasteboard = .general
     ) async throws {
         pasteboard.clearContents()
         guard pasteboard.setString(text, forType: .string) else {
             throw TextReplacementError.clipboardUnavailable
         }
         try await target.focus()
-        switch target.selection {
-        case .selected:
-            break
-        case .none:
-            guard allowWholeField else { throw TextReplacementError.selectionRequired }
-            try target.checkFocus()
-            try target.send(.selectAll)
-            // Let the editor handle Select All before it receives Paste.
-            try await Task.sleep(for: .milliseconds(80))
-        case .unavailable:
-            throw TextReplacementError.invalidSelection
+        if selectionOnly {
+            guard case .selected = target.selection else { throw TextReplacementError.selectionRequired }
+        } else {
+            switch target.selection {
+            case .selected:
+                break
+            case .none:
+                guard allowWholeField else { throw TextReplacementError.selectionRequired }
+                try target.checkFocus()
+                try target.send(.selectAll)
+                // Let the editor handle Select All before it receives Paste.
+                try await Task.sleep(for: .milliseconds(80))
+            case .unavailable:
+                throw TextReplacementError.invalidSelection
+            }
         }
         try target.checkFocus()
         try target.send(.paste)
         try? await Task.sleep(for: .milliseconds(100))
     }
+}
+
+struct FieldCapture {
+    var target: any TextPasteTarget
+    var elementFound: Bool
+    var isSecure: Bool
+    var selectedText: String?
+    var fieldValue: String?
+    var selectionUnreadable: Bool
 }
 
 @MainActor
@@ -93,8 +106,25 @@ enum BackgroundTextReplacer {
         AccessibilityPasteTarget(application: application)
     }
 
-    static func replace(_ text: String, in target: any TextPasteTarget, allowWholeField: Bool) async throws {
-        try await TextReplacement.apply(text, to: target, allowWholeField: allowWholeField)
+    static func readFocusedField(in application: NSRunningApplication) -> FieldCapture {
+        let target = AccessibilityPasteTarget(application: application)
+        let snapshot = target.captureSnapshot()
+        return FieldCapture(
+            target: target,
+            elementFound: snapshot.elementFound,
+            isSecure: snapshot.isSecure,
+            selectedText: snapshot.selectedText,
+            fieldValue: snapshot.fieldValue,
+            selectionUnreadable: snapshot.selectionUnreadable
+        )
+    }
+
+    static func replace(
+        _ text: String, in target: any TextPasteTarget, allowWholeField: Bool, selectionOnly: Bool = false
+    ) async throws {
+        try await TextReplacement.apply(
+            text, to: target, allowWholeField: allowWholeField, selectionOnly: selectionOnly
+        )
     }
 }
 
@@ -142,6 +172,64 @@ private final class AccessibilityPasteTarget: TextPasteTarget {
         return TextSelection.read(
             range: range, selectedText: selectedText
         )
+    }
+
+    fileprivate struct CaptureSnapshot {
+        var elementFound: Bool
+        var isSecure: Bool
+        var selectedText: String?
+        var fieldValue: String?
+        var selectionUnreadable: Bool
+    }
+
+    fileprivate func captureSnapshot() -> CaptureSnapshot {
+        guard let element else {
+            return CaptureSnapshot(
+                elementFound: false, isSecure: false, selectedText: nil, fieldValue: nil, selectionUnreadable: false
+            )
+        }
+        if Self.attribute(kAXSubroleAttribute, from: element) as? String == kAXSecureTextFieldSubrole {
+            return CaptureSnapshot(
+                elementFound: true, isSecure: true, selectedText: nil, fieldValue: nil, selectionUnreadable: false
+            )
+        }
+        let selection = Self.readSelection(from: element)
+        return CaptureSnapshot(
+            elementFound: true,
+            isSecure: false,
+            selectedText: selection.text,
+            fieldValue: Self.attribute(kAXValueAttribute, from: element) as? String,
+            selectionUnreadable: selection.unreadable
+        )
+    }
+
+    private static func readSelection(from element: AXUIElement) -> (text: String?, unreadable: Bool) {
+        let direct = attribute(kAXSelectedTextAttribute, from: element) as? String
+        if let direct, !direct.isEmpty { return (direct, false) }
+        if let marker = attribute(kAXSelectedTextMarkerRangeAttribute, from: element),
+           CFGetTypeID(marker) == AXTextMarkerRangeGetTypeID() {
+            var value: CFTypeRef?
+            if AXUIElementCopyParameterizedAttributeValue(
+                element, kAXStringForTextMarkerRangeParameterizedAttribute as CFString, marker, &value
+            ) == .success, let text = value as? String {
+                return (text, false)
+            }
+            return (nil, true)
+        }
+        if let length = selectedRangeLength(from: element) {
+            if length > 0 { return (nil, true) }
+            return (direct ?? "", false)
+        }
+        return (direct, false)
+    }
+
+    private static func selectedRangeLength(from element: AXUIElement) -> Int? {
+        guard let value = attribute(kAXSelectedTextRangeAttribute, from: element),
+              CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+        let axValue = unsafeDowncast(value, to: AXValue.self)
+        var range = CFRange()
+        guard AXValueGetType(axValue) == .cfRange, AXValueGetValue(axValue, .cfRange, &range) else { return nil }
+        return range.length
     }
 
     func focus() async throws {

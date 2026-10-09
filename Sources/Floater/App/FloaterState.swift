@@ -145,6 +145,13 @@ final class FloaterState: ObservableObject {
         return false
     }
 
+    func presentFailure(_ request: PromptRequest, message: String) {
+        clearResult()
+        currentRequest = request
+        errorMessage = message
+        screen = .results
+    }
+
     func start(_ request: PromptRequest) {
         clearResult()
         let generationID = UUID()

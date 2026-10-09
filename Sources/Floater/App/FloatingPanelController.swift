@@ -9,12 +9,15 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     private let settings: AppSettings
     private let accessibility: AccessibilityAccess
     private let captureTarget: @MainActor (NSRunningApplication) -> any TextPasteTarget
-    private let replaceText: @MainActor (String, any TextPasteTarget, Bool) async throws -> Void
+    private let readFocusedField: @MainActor (NSRunningApplication) -> FieldCapture
+    private let activateForCapture: @MainActor (NSRunningApplication) async -> Void
+    private let replaceText: @MainActor (String, any TextPasteTarget, Bool, Bool) async throws -> Void
     private let historyState = HistoryViewState()
     private var panel: FloaterPanel?
     private var hostingView: NSHostingView<FloaterWindowView>?
     private var previousApplication: NSRunningApplication?
     private var replacementTarget: (any TextPasteTarget)?
+    private var selectionOnlyRequest: PromptRequest?
     private var resizeScheduled = false
     private var historyFocusNeedsRestore = false
     private var isReplacing = false
@@ -25,8 +28,19 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         captureTarget: @escaping @MainActor (NSRunningApplication) -> any TextPasteTarget = {
             BackgroundTextReplacer.capture(in: $0)
         },
-        replaceText: @escaping @MainActor (String, any TextPasteTarget, Bool) async throws -> Void = {
-            try await BackgroundTextReplacer.replace($0, in: $1, allowWholeField: $2)
+        readFocusedField: @escaping @MainActor (NSRunningApplication) -> FieldCapture = {
+            BackgroundTextReplacer.readFocusedField(in: $0)
+        },
+        activateForCapture: @escaping @MainActor (NSRunningApplication) async -> Void = { application in
+            guard !application.isTerminated else { return }
+            application.activate()
+            for _ in 0..<20 {
+                if application.isActive { return }
+                try? await Task.sleep(for: .milliseconds(25))
+            }
+        },
+        replaceText: @escaping @MainActor (String, any TextPasteTarget, Bool, Bool) async throws -> Void = {
+            try await BackgroundTextReplacer.replace($0, in: $1, allowWholeField: $2, selectionOnly: $3)
         }
     ) {
         self.state = state
@@ -34,12 +48,14 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         self.settings = settings
         self.accessibility = accessibility
         self.captureTarget = captureTarget
+        self.readFocusedField = readFocusedField
+        self.activateForCapture = activateForCapture
         self.replaceText = replaceText
     }
 
-    func show(previousApplication: NSRunningApplication?) {
+    func show(previousApplication: NSRunningApplication?, preservingReplacementTarget: Bool = false) {
         state.showRequest()
-        rememberTarget(in: previousApplication)
+        rememberTarget(in: previousApplication, preservingReplacementTarget: preservingReplacementTarget)
         showPanel()
         if let initialFirstResponder = panel?.initialFirstResponder {
             panel?.makeFirstResponder(initialFirstResponder)
@@ -134,12 +150,13 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         replacementTarget = target
         let response = state.response
         let allowWholeField = settings.replaceWholeFieldWhenUnselected
+        let selectionOnly = state.currentRequest == selectionOnlyRequest
         isReplacing = true
         hide()
         Task { @MainActor [self] in
             defer { isReplacing = false }
             do {
-                try await replaceText(response, target, allowWholeField)
+                try await replaceText(response, target, allowWholeField, selectionOnly)
             } catch {
                 state.setActionError(error.localizedDescription)
                 showPanel()
@@ -147,17 +164,29 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         }
     }
 
-    func handle(_ url: URL, fallbackApplication: NSRunningApplication?) {
+    func handle(
+        _ url: URL,
+        fallbackApplication: NSRunningApplication?,
+        recentApplications: [NSRunningApplication] = []
+    ) async {
         guard let routedPrompt = PromptURL.parse(url) else { return }
-
-        let application = routedPrompt.previousProcessID
-            .flatMap(NSRunningApplication.init(processIdentifier:))
-            ?? fallbackApplication
-
-        handle(routedPrompt.request, fallbackApplication: application)
+        let resolution = resolve(
+            routedPrompt, fallback: fallbackApplication, recent: recentApplications
+        )
+        guard routedPrompt.captureInput else {
+            handle(routedPrompt.request, fallbackApplication: resolution.application)
+            return
+        }
+        await capture(
+            routedPrompt.request,
+            application: resolution.application,
+            considered: resolution.considered,
+            ignoredAny: resolution.ignoredAny
+        )
     }
 
     func handle(_ request: PromptRequest, fallbackApplication: NSRunningApplication?) {
+        selectionOnlyRequest = nil
         state.start(request)
         show(previousApplication: fallbackApplication)
     }
@@ -198,7 +227,10 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
 
         let hostingView = NSHostingView(rootView: FloaterWindowView(
             state: state, accessibility: accessibility,
-            onSubmit: { [weak self] request in self?.state.start(request) },
+            onSubmit: { [weak self] request in
+                self?.selectionOnlyRequest = nil
+                self?.state.start(request)
+            },
             onCopy: { [weak self] in self?.copyAndDismiss() },
             onReplace: { [weak self] in self?.replaceAndDismiss() },
             onDismiss: { [weak self] in self?.dismiss() },
@@ -315,11 +347,139 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         application.activate()
     }
 
-    private func rememberTarget(in application: NSRunningApplication?) {
+    private func rememberTarget(
+        in application: NSRunningApplication?, preservingReplacementTarget: Bool = false
+    ) {
         accessibility.refresh()
         previousApplication = application
-        replacementTarget = accessibility.isGranted ? application.map(captureTarget) : nil
+        if !preservingReplacementTarget {
+            selectionOnlyRequest = nil
+            replacementTarget = accessibility.isGranted ? application.map(captureTarget) : nil
+        }
         state.setCanReplace(application != nil && application?.isTerminated == false)
+    }
+
+    private struct AppResolution {
+        var application: NSRunningApplication?
+        var considered: [TargetCandidate]
+        var ignoredAny: Bool
+    }
+
+    private func resolve(
+        _ routed: RoutedPrompt,
+        fallback: NSRunningApplication?,
+        recent: [NSRunningApplication]
+    ) -> AppResolution {
+        guard !routed.ignoredBundleIdentifiers.isEmpty else {
+            let application = routed.previousProcessID.flatMap(NSRunningApplication.init(processIdentifier:)) ?? fallback
+            return AppResolution(application: application, considered: [], ignoredAny: false)
+        }
+
+        let ownBundleIdentifier = Bundle.main.bundleIdentifier
+        let previousApplication = routed.previousProcessID.flatMap(NSRunningApplication.init(processIdentifier:))
+        let previous = previousApplication.map(candidate)
+        let recentCandidates = recent.map(candidate)
+        let considered = TargetRouting.considered(
+            previous: previous, recent: recentCandidates, ownBundleIdentifier: ownBundleIdentifier
+        )
+        let selected = TargetRouting.select(
+            previous: previous,
+            recent: recentCandidates,
+            ignoredBundleIdentifiers: routed.ignoredBundleIdentifiers,
+            ownBundleIdentifier: ownBundleIdentifier
+        )
+        let application: NSRunningApplication?
+        switch selected {
+        case .previous:
+            application = previousApplication
+        case .recent(let index):
+            application = recent.indices.contains(index) ? recent[index] : nil
+        case nil:
+            application = nil
+        }
+        return AppResolution(application: application, considered: considered, ignoredAny: true)
+    }
+
+    private func candidate(_ application: NSRunningApplication) -> TargetCandidate {
+        TargetCandidate(
+            name: application.localizedName,
+            bundleIdentifier: application.bundleIdentifier,
+            isRunning: !application.isTerminated
+        )
+    }
+
+    private func capture(
+        _ request: PromptRequest,
+        application: NSRunningApplication?,
+        considered: [TargetCandidate],
+        ignoredAny: Bool
+    ) async {
+        guard let application, !application.isTerminated else {
+            let named = considered.isEmpty ? [application].compactMap { $0 }.map(candidate) : considered
+            fail(
+                request,
+                CaptureMessages.noApplication(ignoredAny: ignoredAny, considered: named),
+                application: nil
+            )
+            return
+        }
+        accessibility.refresh()
+        guard accessibility.isGranted else {
+            fail(request, CaptureMessages.accessibility(for: candidate(application)), application: application)
+            return
+        }
+
+        var read = readFocusedField(application)
+        var outcome = FieldTextChoice.interpret(
+            elementFound: read.elementFound,
+            isSecure: read.isSecure,
+            selectedText: read.selectedText,
+            fieldValue: read.fieldValue,
+            selectionUnreadable: read.selectionUnreadable
+        )
+        if outcome == .failed {
+            await activateForCapture(application)
+            read = readFocusedField(application)
+            outcome = FieldTextChoice.interpret(
+                elementFound: read.elementFound,
+                isSecure: read.isSecure,
+                selectedText: read.selectedText,
+                fieldValue: read.fieldValue,
+                selectionUnreadable: read.selectionUnreadable
+            )
+            if outcome == .failed { outcome = .unreadable }
+        }
+
+        switch outcome {
+        case .selection(let text):
+            startCaptured(request, input: text, application: application, target: read.target, selectionOnly: true)
+        case .field(let text):
+            startCaptured(request, input: text, application: application, target: read.target, selectionOnly: false)
+        case .empty:
+            fail(request, CaptureMessages.emptyField(for: candidate(application)), application: application)
+        case .unreadable, .failed:
+            fail(request, CaptureMessages.unreadableField(for: candidate(application)), application: application)
+        }
+    }
+
+    private func startCaptured(
+        _ request: PromptRequest,
+        input: String,
+        application: NSRunningApplication,
+        target: any TextPasteTarget,
+        selectionOnly: Bool
+    ) {
+        let captured = PromptRequest(prompt: request.prompt, input: input, title: request.title)
+        selectionOnlyRequest = selectionOnly ? captured : nil
+        replacementTarget = target
+        state.start(captured)
+        show(previousApplication: application, preservingReplacementTarget: true)
+    }
+
+    private func fail(_ request: PromptRequest, _ message: String, application: NSRunningApplication?) {
+        selectionOnlyRequest = nil
+        state.presentFailure(request, message: message)
+        show(previousApplication: application)
     }
 }
 

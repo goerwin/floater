@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     private var activationObserver: NSObjectProtocol?
     private var lastExternalApplication: NSRunningApplication?
+    private var recentExternalApplications: [NSRunningApplication] = []
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -88,9 +89,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func observeExternalApplications() {
-        if let application = NSWorkspace.shared.frontmostApplication,
-           application.bundleIdentifier != Bundle.main.bundleIdentifier {
-            lastExternalApplication = application
+        if let application = NSWorkspace.shared.frontmostApplication {
+            rememberExternalApplication(application)
         }
         activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
@@ -103,11 +103,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             Task { @MainActor [weak self] in
                 self?.accessibility.refresh()
-                guard let application = NSRunningApplication(processIdentifier: processID),
-                      application.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
-                self?.lastExternalApplication = application
+                guard let application = NSRunningApplication(processIdentifier: processID) else { return }
+                self?.rememberExternalApplication(application)
             }
         }
+    }
+
+    private func rememberExternalApplication(_ application: NSRunningApplication) {
+        guard application.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
+        let identifier = application.bundleIdentifier ?? "pid:\(application.processIdentifier)"
+        let identifiers = recentExternalApplications.map {
+            $0.bundleIdentifier ?? "pid:\($0.processIdentifier)"
+        }
+        recentExternalApplications = RecentAppMemory.remember(identifier, recent: identifiers, isOwnApp: false).compactMap { id in
+            if id == identifier { return application }
+            return recentExternalApplications.first {
+                ($0.bundleIdentifier ?? "pid:\($0.processIdentifier)") == id
+            }
+        }
+        lastExternalApplication = application
     }
 
     private func registerURLHandler() {
@@ -125,6 +139,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ) {
         guard let urlString = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
               let url = URL(string: urlString) else { return }
-        panelController.handle(url, fallbackApplication: activeExternalApplication)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.panelController.handle(
+                url,
+                fallbackApplication: self.activeExternalApplication,
+                recentApplications: self.recentExternalApplications
+            )
+        }
     }
 }
