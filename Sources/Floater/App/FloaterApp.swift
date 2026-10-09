@@ -30,10 +30,7 @@ struct FloaterApp: App {
 
             Divider()
 
-            Button("Check for Updates...") {
-                updateChecker.checkForUpdates()
-            }
-            .disabled(updateChecker.isChecking)
+            checkForUpdatesButton
 
             Button(quitLabel) {
                 NSApp.terminate(nil)
@@ -41,8 +38,18 @@ struct FloaterApp: App {
         }
         .menuBarExtraStyle(.menu)
         .commands {
+            CommandGroup(after: .appInfo) {
+                checkForUpdatesButton
+            }
             CommandGroup(replacing: .appVisibility) {}
         }
+    }
+
+    private var checkForUpdatesButton: some View {
+        Button("Check for Updates...") {
+            updateChecker.checkForUpdates()
+        }
+        .disabled(!updateChecker.canCheckForUpdates)
     }
 
     private var quitLabel: String {

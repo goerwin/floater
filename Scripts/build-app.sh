@@ -42,7 +42,15 @@ env SWIFTPM_MODULECACHE_OVERRIDE="$FLOATER_MODULE_CACHE" swift build \
 rm -rf "$FLOATER_APP_BUNDLE"
 mkdir -p "$FLOATER_APP_BUNDLE/Contents/MacOS"
 mkdir -p "$FLOATER_APP_BUNDLE/Contents/Resources"
+mkdir -p "$FLOATER_APP_BUNDLE/Contents/Frameworks"
+FLOATER_SPARKLE_FRAMEWORK="$FLOATER_ROOT_DIR/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
+ditto "$FLOATER_SPARKLE_FRAMEWORK" "$FLOATER_APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
 cp "$FLOATER_BUILD_BIN_DIR/Floater" "$FLOATER_APP_BUNDLE/Contents/MacOS/Floater"
+while IFS= read -r rpath; do
+    if [[ "$rpath" == /* ]]; then
+        /usr/bin/install_name_tool -delete_rpath "$rpath" "$FLOATER_APP_BUNDLE/Contents/MacOS/Floater"
+    fi
+done < <(/usr/bin/otool -l "$FLOATER_APP_BUNDLE/Contents/MacOS/Floater" | awk '/cmd LC_RPATH/ { getline; getline; print $2 }')
 cp "$FLOATER_BUILD_BIN_DIR/FloaterCLI" "$FLOATER_APP_BUNDLE/Contents/MacOS/floater-cli"
 cp "$FLOATER_ROOT_DIR/Resources/Info.plist" "$FLOATER_APP_BUNDLE/Contents/Info.plist"
 cp "$FLOATER_ROOT_DIR/Resources/Generated/Floater.icns" "$FLOATER_APP_BUNDLE/Contents/Resources/"
@@ -51,9 +59,16 @@ cp "$FLOATER_ROOT_DIR/Resources/Generated/Floater.icns" "$FLOATER_APP_BUNDLE/Con
 printf 'APPL????' > "$FLOATER_APP_BUNDLE/Contents/PkgInfo"
 
 if [[ "$FLOATER_BUILD_CONFIGURATION" != debug && -n "${CODE_SIGNING_IDENTITY:-}" ]]; then
+    FLOATER_EMBEDDED_SPARKLE="$FLOATER_APP_BUNDLE/Contents/Frameworks/Sparkle.framework/Versions/B"
+    for component in XPCServices/Installer.xpc XPCServices/Downloader.xpc Updater.app Autoupdate; do
+        /usr/bin/codesign --force --options runtime --timestamp --sign "$CODE_SIGNING_IDENTITY" "$FLOATER_EMBEDDED_SPARKLE/$component"
+    done
+    /usr/bin/codesign --force --options runtime --timestamp --sign "$CODE_SIGNING_IDENTITY" "$FLOATER_APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
     /usr/bin/codesign --force --options runtime --timestamp --sign "$CODE_SIGNING_IDENTITY" "$FLOATER_APP_BUNDLE/Contents/MacOS/floater-cli"
     /usr/bin/codesign --force --options runtime --timestamp --sign "$CODE_SIGNING_IDENTITY" "$FLOATER_APP_BUNDLE"
     /usr/bin/codesign --verify --deep --strict --verbose=2 "$FLOATER_APP_BUNDLE"
+else
+    /usr/bin/codesign --force --sign - "$FLOATER_APP_BUNDLE"
 fi
 
 printf 'Built %s\n' "$FLOATER_APP_BUNDLE"

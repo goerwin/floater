@@ -36,6 +36,12 @@
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>SUEnableAutomaticChecks</key>
+	<false/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/goerwin/floater/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>T7cl4Bn07ZZ+yjhtYJMHWob5sijJ4bgK6/vX3Niw508=</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
