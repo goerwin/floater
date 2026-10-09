@@ -19,61 +19,62 @@ struct HistoryView: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
-            HStack {
+        VStack(spacing: 0) {
+            PanelHeader {
                 Text("History")
                     .font(.headline)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .gesture(WindowDragGesture())
                 historyButton("New", shortcut: .new, identifier: "historyNew", action: onNew)
             }
-            HistorySearchField(text: $state.query)
-                .frame(height: 28)
-            VStack(spacing: 0) {
-                if let errorMessage = store.errorMessage {
-                    Text(errorMessage)
-                        .font(.callout)
-                        .foregroundStyle(.red)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                }
+            VStack(spacing: 8) {
+                HistorySearchField(text: $state.query)
+                    .frame(height: 28)
+                VStack(spacing: 0) {
+                    if let errorMessage = store.errorMessage {
+                        Text(errorMessage)
+                            .font(.callout)
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                    }
 
-                HistoryList(
-                    entries: filteredEntries, selection: $state.selection,
-                    onOpen: open, onDelete: store.delete
-                )
-                .overlay {
-                    if filteredEntries.isEmpty {
-                        ContentUnavailableView(
-                            state.query.isEmpty ? "No history yet" : "No matching results",
-                            systemImage: "clock.arrow.circlepath",
-                            description: Text(state.query.isEmpty
-                                ? "Completed requests will appear here."
-                                : "Try a different search.")
-                        )
-                        .allowsHitTesting(false)
+                    HistoryList(
+                        entries: filteredEntries, selection: $state.selection,
+                        onOpen: open, onDelete: store.delete
+                    )
+                    .overlay {
+                        if filteredEntries.isEmpty {
+                            ContentUnavailableView(
+                                state.query.isEmpty ? "No history yet" : "No matching results",
+                                systemImage: "clock.arrow.circlepath",
+                                description: Text(state.query.isEmpty
+                                    ? "Completed requests will appear here."
+                                    : "Try a different search.")
+                            )
+                            .allowsHitTesting(false)
+                        }
                     }
-                }
 
-                Divider()
-                HStack {
-                    Text("\(store.entries.count) of \(HistoryStore.limit) saved")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    historyButton("Clear history…", identifier: "clearHistory", enabled: !store.entries.isEmpty || store.errorMessage != nil) {
-                        isConfirmingClear = true
+                    Divider()
+                    HStack {
+                        Text("\(store.entries.count) of \(HistoryStore.limit) saved")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        historyButton("Clear history…", identifier: "clearHistory", enabled: !store.entries.isEmpty || store.errorMessage != nil) {
+                            isConfirmingClear = true
+                        }
+                        Spacer()
+                        historyButton("Dismiss", shortcut: .dismiss, identifier: "historyDismiss", action: onDismiss)
+                        historyButton("Delete", keyHint: "⌫", identifier: "historyDelete", enabled: selectedEntry != nil, action: deleteSelection)
+                        historyButton("Open result", keyHint: "↩", identifier: "historyOpen", enabled: selectedEntry != nil) {
+                            if let selectedEntry { open(selectedEntry) }
+                        }
                     }
-                    Spacer()
-                    historyButton("Dismiss", shortcut: .dismiss, identifier: "historyDismiss", action: onDismiss)
-                    historyButton("Delete", keyHint: "⌫", identifier: "historyDelete", enabled: selectedEntry != nil, action: deleteSelection)
-                    historyButton("Open result", keyHint: "↩", identifier: "historyOpen", enabled: selectedEntry != nil) {
-                        if let selectedEntry { open(selectedEntry) }
-                    }
+                    .padding(12)
                 }
-                .padding(12)
             }
+            .padding([.horizontal, .bottom], FloaterPanelLayout.padding)
         }
-        .padding(FloaterPanelLayout.padding)
         .frame(width: FloaterPanelLayout.width, height: 500)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
         .background {

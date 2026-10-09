@@ -30,17 +30,18 @@ struct FloaterPanelView: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 0) {
             header
-            Divider()
-
-            if viewModel.currentRequest == nil {
-                composer
-            } else {
-                responseView
+            VStack(spacing: 8) {
+                Divider()
+                if viewModel.currentRequest == nil {
+                    composer
+                } else {
+                    responseView
+                }
             }
+            .padding([.horizontal, .bottom], FloaterPanelLayout.padding)
         }
-        .padding(FloaterPanelLayout.padding)
         .frame(width: FloaterPanelLayout.width, alignment: .top)
         .fixedSize(horizontal: false, vertical: true)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
@@ -71,7 +72,7 @@ struct FloaterPanelView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
+        PanelHeader {
             HStack(spacing: 8) {
                 Image(systemName: "sparkles")
                     .font(.system(size: 12, weight: .medium))
@@ -90,7 +91,6 @@ struct FloaterPanelView: View {
                 }
                 Spacer(minLength: 4)
             }
-            .gesture(WindowDragGesture())
 
             panelButton("New", control: .new, action: newRequest)
                 .help("New request (Command+N)")
@@ -98,7 +98,6 @@ struct FloaterPanelView: View {
             panelButton("History", control: .history, action: onHistory)
                 .help("Open history (Command+H)")
         }
-        .frame(minHeight: 24)
     }
 
     private var windowTitle: String {
