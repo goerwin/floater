@@ -31,7 +31,7 @@ final class TextReplacementTests: XCTestCase {
         defer { controller.hide() }
         XCTAssertEqual(captures, 1)
         XCTAssertFalse(try XCTUnwrap(controller.window).canBecomeMain)
-        XCTAssertFalse(try XCTUnwrap(controller.window).styleMask.contains(.nonactivatingPanel))
+        XCTAssertTrue(try XCTUnwrap(controller.window).styleMask.contains(.nonactivatingPanel))
         controller.replaceAndDismiss()
         XCTAssertFalse(controller.isVisible)
         controller.replaceAndDismiss()
