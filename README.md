@@ -15,6 +15,7 @@ Requires macOS 26 or later and a Mac with Apple Intelligence enabled and ready.
 - **Results:** copy the full response or a selection, edit your request, and run it again.
 - **Replace:** paste over selected text in the previous app, or the whole field when nothing is selected. Keeps the result on your clipboard. Requires Accessibility permission.
 - **History:** search and reopen the latest 100 successful results, saved locally.
+- **Updates:** use **Check for Updates...** in the menu to download and install new versions.
 - **Automation:** send requests through the CLI or `floater://` URLs.
 
 ## Build and run
@@ -43,9 +44,9 @@ floater://prompt?prompt=Translate%20to%20Spanish&input=Hello%2C%20world
 
 Run `make release-patch`, `make release-minor`, or `make release-major` to preview and confirm a version tag push. Keep the working tree clean first. You can also run **Release** from the GitHub Actions tab with a tag.
 
-Pushing a `vMAJOR.MINOR.PATCH` tag publishes `Floater-<version>.dmg` and `Floater-<version>-SHA256SUMS`. Verify the DMG with `shasum -c Floater-<version>-SHA256SUMS`.
+Pushing a `vMAJOR.MINOR.PATCH` tag publishes `Floater-<version>.dmg`, `Floater-<version>-SHA256SUMS`, and the signed Sparkle `appcast.xml`. Verify the DMG with `shasum -c Floater-<version>-SHA256SUMS`.
 
-GitHub Actions needs the repository secrets `MAC_APP_CERTIFICATE`, `MAC_BUILD_CERTIFICATE_BASE64`, and `MAC_BUILD_CERTIFICATE_BASE64_PASSWORD` to publish releases.
+GitHub Actions needs the repository secrets `MAC_APP_CERTIFICATE`, `MAC_BUILD_CERTIFICATE_BASE64`, `MAC_BUILD_CERTIFICATE_BASE64_PASSWORD`, and `SPARKLE_PRIVATE_KEY` to publish releases. The Sparkle key must match `SUPublicEDKey` in `Resources/Info.plist`, shared with Key Remapper.
 
 ## License
 
