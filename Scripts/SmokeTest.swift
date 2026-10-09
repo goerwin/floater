@@ -173,7 +173,7 @@ private final class AppSmokeTest {
             try checkStationaryDrag(try require(element(identifier), "\(identifier) missing"), label: identifier)
         }
         try menu("New")
-        try wait("empty composer") { self.element("prompt") != nil }
+        try wait("empty new request") { self.element("prompt") != nil }
         let disabledRun = try require(element("run"), "Run missing")
         try check(attribute(disabledRun, kAXEnabledAttribute) as? Bool == false, "Run must be disabled for an empty prompt")
         try checkStationaryDrag(disabledRun, label: "disabled Run")

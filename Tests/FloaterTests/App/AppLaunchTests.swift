@@ -4,7 +4,7 @@ import XCTest
 
 @MainActor
 final class AppLaunchTests: XCTestCase {
-    func testOpeningAppIconShowsEmptyComposer() async throws {
+    func testOpeningAppIconShowsEmptyNewRequest() async throws {
         let application = NSApplication.shared
         let existingWindows = application.windows
         let delegate = AppDelegate()
@@ -29,7 +29,7 @@ final class AppLaunchTests: XCTestCase {
         XCTAssertEqual(input.string, "")
         XCTAssertTrue(window.firstResponder === prompt)
 
-        for mode in ["composer", "history", "hidden"] {
+        for mode in ["newRequest", "history", "hidden"] {
             if mode == "history" {
                 delegate.showHistory()
             } else {
@@ -50,7 +50,7 @@ final class AppLaunchTests: XCTestCase {
         }
     }
 
-    func testNonDefaultLaunchDoesNotOpenEmptyComposer() async throws {
+    func testNonDefaultLaunchDoesNotOpenEmptyNewRequest() async throws {
         let application = NSApplication.shared
         let existingWindows = application.windows
         let delegate = AppDelegate()
@@ -69,5 +69,18 @@ final class AppLaunchTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(200))
 
         XCTAssertFalse(application.windows.contains { $0.isVisible && !existingWindows.contains($0) })
+    }
+
+    func testOpeningMenuRefreshesAccessibilityStatusWithoutWindowActivation() {
+        _ = NSApplication.shared
+        var granted = false
+        let access = AccessibilityAccess(isTrusted: { granted }, requestAccess: {})
+        XCTAssertFalse(access.isGranted)
+        granted = true
+        NotificationCenter.default.post(name: NSMenu.didBeginTrackingNotification, object: NSMenu())
+        XCTAssertTrue(access.isGranted)
+        granted = false
+        NotificationCenter.default.post(name: NSMenu.didBeginTrackingNotification, object: NSMenu())
+        XCTAssertFalse(access.isGranted)
     }
 }

@@ -1,6 +1,6 @@
 # Floater
 
-Floater is a native macOS utility that opens AI responses in a draggable floating panel. It accepts requests from a small composer, the `floater` CLI, or the `floater://` URL scheme. Response text is selectable, so you can copy only part of it.
+Floater is a native macOS utility that opens AI responses in a draggable floating panel. Create a request in New Request, or send one through the `floater` CLI or `floater://` URL scheme. Response text is selectable, so you can copy only part of it.
 
 Floater uses Apple Foundation Models on device. It requires macOS 26 or later and a Mac that supports Apple Intelligence, with Apple Intelligence enabled and ready.
 
@@ -11,17 +11,28 @@ Scripts/build-app.sh
 open build/Floater.app
 ```
 
-Floater runs in the menu bar. Opening its app icon shows an empty composer, even when Floater is already running. Choose **Open** from the menu bar to bring back the current window, or **New** to start an empty request. The first launch registers the `floater://` URL scheme with macOS.
+Floater runs in the menu bar. Opening its app icon opens New Request with empty fields, even when Floater is already running. Choose **Open** from the menu bar to bring back the current window, or **New** to start an empty request. The first launch registers the `floater://` URL scheme with macOS.
 
 In Prompt and Input, **Enter** and **Shift+Enter** add a new line, and **Tab** and **Shift+Tab** insert tabs. Use **Command+R**, **Command+Enter**, or **Run** to submit. **Option+Tab** and **Option+Shift+Tab** move between fields and actions. Outside those editors, ordinary Tab and Shift+Tab also move focus. Response actions follow this order: **Copy, Edit, Replace, Dismiss, History, New**; disabled actions are skipped. Focused buttons activate with Enter or Space. **New** or **Command+N** starts an empty request. Button labels show their keyboard shortcuts.
 
-Pass input as plain text through the composer, `FLOATER_INPUT`, CLI, or URL scheme. Floater wraps nonempty input in `<transcript>...</transcript>` when sending it to the model. The editor and history keep the original input text.
+Pass input as plain text through New Request, `FLOATER_INPUT`, CLI, or URL scheme. Floater wraps nonempty input in `<transcript>...</transcript>` when sending it to the model. The editor and history keep the original input text.
 
-Choose **History** in the panel or menu bar, or **Command+H** to search and reopen completed results. Double-click an entry or select it and choose **Open result**. The saved result opens without generating it again; use **Edit** to change the original prompt or input and rerun it. In the response view, **Command+C** copies selected text or activates Copy when nothing is selected, **Command+E** opens Edit, and **Command+Shift+R** activates Replace when available.
+Choose **History** in the panel or menu bar, or **Command+H** to search and reopen completed results. Double-click an entry or select it and choose **Open result**. The saved result opens without generating it again; use **Edit** to change the original prompt or input and rerun it. In the results view, **Command+C** copies selected text or activates Copy when nothing is selected, **Command+E** opens Edit, and **Command+Shift+R** activates Replace when available.
 
-The composer, response, and History share one floating window that stays above other apps. Drag its background to move it; editors, selectable response text, lists, and buttons keep their normal mouse behavior. In History, **Command+F** focuses search. **Escape** or **Dismiss** returns to the screen that opened History, preserving its draft or response. Dismissing a saved response returns to History with the same search and selection. Copy and successful Replace return directly to the previous app.
+New Request, Results, and History share one floating window that stays above other apps. Drag its background to move it; editors, selectable response text, lists, and buttons keep their normal mouse behavior. In History, **Command+F** focuses search. **Escape** or **Dismiss** returns to the screen that opened History, preserving its draft or response. Dismissing a saved response returns to History with the same search and selection. Copy and successful Replace return directly to the previous app.
 
 Floater keeps the latest 100 successful, nonempty results locally in `~/Library/Application Support/Floater/history.json`, including each prompt, input, response, and date. Failed and canceled requests aren't saved. Delete individual entries or use **Clear history…** to remove all saved history.
+
+## Code structure
+
+The three screens are `NewRequestView`, `HistoryView`, and `ResultsView`, in matching folders under `Sources/Floater`.
+
+- `App` owns startup, the floating window, and `FloaterState`, which coordinates generation, editing, and navigation.
+- `NewRequest`, `History`, and `Results` contain only their screen's UI and related components.
+- `Shared` contains reusable controls, keyboard handling, history storage, and platform services.
+- `FloaterCore` contains the request and URL types shared with the CLI.
+
+Tests follow the same folders. Native window and keyboard helpers live in `Tests/FloaterTests/Shared/WindowTestSupport.swift`.
 
 ## Make targets
 
@@ -29,7 +40,7 @@ Run these from the project directory:
 
 - **make test** runs the Swift test suite.
 - **make test-app** rebuilds the app and runs smoke tests through macOS. The terminal or app running it needs Accessibility access. Use `Scripts/test-app.sh --no-build` to test the existing bundle.
-- **make dev-app** quits Floater, rebuilds the local debug app, and opens the composer without running tests. Set `FLOATER_PROMPT`, `FLOATER_INPUT`, and optionally `FLOATER_TITLE` to run a request directly.
+- **make dev-app** quits Floater, rebuilds the local debug app, and opens New Request without running tests. Set `FLOATER_PROMPT`, `FLOATER_INPUT`, and optionally `FLOATER_TITLE` to run a request directly.
 
 Debug builds use version `0.0.0` and skip bundle signing, so development doesn't require an Apple account or signing certificate. macOS may still give executables a linker-generated ad hoc signature. Explicit signing through `CODE_SIGNING_IDENTITY` applies only to release builds. The smoke tests don't exercise Replace, which requires Accessibility permission for Floater; the runner separately needs Accessibility permission to automate the UI.
 

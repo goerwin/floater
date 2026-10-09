@@ -7,15 +7,16 @@ struct PanelButton: View {
     var keyHint: String?
     var isEnabled = true
     var isPrimary = false
-    var isSmall = false
-    let isFocused: Bool
+    var isFocused = false
     var prefersInitialFocus = false
     var identifier: String?
-    let onFocus: () -> Void
+    var onFocus: () -> Void = {}
     let action: () -> Void
 
     var body: some View {
         NativeButton(configuration: self)
+            .fixedSize()
+            .controlSize(.regular)
             .disabled(!isEnabled)
             .overlay {
                 if !isEnabled {
@@ -46,7 +47,7 @@ struct PanelButton: View {
 
         func updateNSView(_ button: ActionButton, context: Context) {
             button.isEnabled = configuration.isEnabled && context.environment.isEnabled
-            button.controlSize = configuration.isSmall ? .small : .regular
+            button.controlSize = .regular
             let font = NSFont.systemFont(ofSize: NSFont.systemFontSize(for: button.controlSize))
             button.font = font
             let textColor: NSColor = button.isEnabled
@@ -143,5 +144,36 @@ struct PanelButton: View {
         @objc func activate(_ sender: Any?) {
             onActivate?()
         }
+    }
+}
+
+enum PanelControl: String {
+    case prompt, input, run, copy, edit, replace, dismiss, history, new
+
+    var shortcut: PanelShortcut? {
+        switch self {
+        case .prompt, .input: nil
+        case .run: .run
+        case .copy: .copy
+        case .edit: .edit
+        case .replace: .replace
+        case .dismiss: .dismiss
+        case .history: .history
+        case .new: .new
+        }
+    }
+}
+
+extension PanelButton {
+    init(
+        _ title: String, control: PanelControl, focus: Binding<PanelControl?>,
+        isEnabled: Bool = true, isPrimary: Bool = false, action: @escaping () -> Void
+    ) {
+        self.init(
+            title: title, shortcut: control.shortcut, isEnabled: isEnabled, isPrimary: isPrimary,
+            isFocused: focus.wrappedValue == control, prefersInitialFocus: control == .copy,
+            identifier: control.rawValue,
+            onFocus: { if focus.wrappedValue != control { focus.wrappedValue = control } }, action: action
+        )
     }
 }

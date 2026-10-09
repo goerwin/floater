@@ -7,7 +7,7 @@ import XCTest
 @MainActor
 final class HistoryViewTests: XCTestCase {
     private var controller: FloatingPanelController?
-    private var model: FloaterViewModel?
+    private var model: FloaterState?
 
     func testTabIntoListSelectsAnEdgeRowInTheTraversalDirection() throws {
         for modifiers: NSEvent.ModifierFlags in [[], .option, .shift, [.option, .shift]] {
@@ -272,9 +272,9 @@ final class HistoryViewTests: XCTestCase {
         store: HistoryStore
     ) -> NSWindow {
         _ = NSApplication.shared
-        let model = FloaterViewModel(provider: HistoryTestProvider())
+        let model = FloaterState(provider: HistoryTestProvider())
         self.model = model
-        let controller = FloatingPanelController(viewModel: model, historyStore: store)
+        let controller = FloatingPanelController(state: model, historyStore: store)
         controller.showHistory()
         self.controller = controller
         let window = controller.window!
@@ -283,26 +283,7 @@ final class HistoryViewTests: XCTestCase {
         return window
     }
 
-    private func descendants<T: NSView>(of type: T.Type, in view: NSView) -> [T] {
-        (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants(of: type, in: $0) }
-    }
 
-    private func settle(_ window: NSWindow) {
-        for _ in 0..<3 {
-            window.contentView?.layoutSubtreeIfNeeded()
-            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
-        }
-    }
-
-    private func sendKey(_ characters: String, code: UInt16, modifiers: NSEvent.ModifierFlags = [], to window: NSWindow) {
-        window.sendEvent(NSEvent.keyEvent(
-            with: .keyDown, location: .zero, modifierFlags: modifiers,
-            timestamp: 0, windowNumber: window.windowNumber, context: nil,
-            characters: characters, charactersIgnoringModifiers: characters,
-            isARepeat: false, keyCode: code
-        )!)
-        settle(window)
-    }
 }
 
 @MainActor

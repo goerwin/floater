@@ -3,6 +3,11 @@ import FoundationModels
 import FloaterCore
 
 @MainActor
+protocol AIProvider {
+    func generate(_ request: PromptRequest, onUpdate: @MainActor (String) -> Void) async throws
+}
+
+@MainActor
 final class FoundationModelsProvider: AIProvider {
     func generate(
         _ request: PromptRequest,

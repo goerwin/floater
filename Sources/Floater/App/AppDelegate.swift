@@ -4,22 +4,19 @@ import FloaterCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    static weak var shared: AppDelegate?
-
     let historyStore = HistoryStore()
     let settings = AppSettings()
     let accessibility = AccessibilityAccess()
-    private lazy var viewModel = FloaterViewModel(
+    private lazy var state = FloaterState(
         provider: FoundationModelsProvider(), historyStore: historyStore
     )
     private lazy var panelController = FloatingPanelController(
-        viewModel: viewModel, historyStore: historyStore, settings: settings, accessibility: accessibility
+        state: state, historyStore: historyStore, settings: settings, accessibility: accessibility
     )
     private var activationObserver: NSObjectProtocol?
     private var lastExternalApplication: NSRunningApplication?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
-        Self.shared = self
         NSApp.setActivationPolicy(.accessory)
         observeExternalApplications()
         registerURLHandler()
@@ -34,10 +31,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self else { return }
                 self.panelController.handle(request, fallbackApplication: self.activeExternalApplication)
             }
-        } else if arguments.contains("--show-composer") || isDefaultLaunch {
+        } else if (arguments.contains("--show-new-request") || arguments.contains("--show-composer")) || isDefaultLaunch {
             Task { @MainActor [weak self] in
                 await Task.yield()
-                self?.showComposer()
+                self?.showNewRequest()
             }
         }
     }
@@ -47,20 +44,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        showComposer()
+        showNewRequest()
         return false
     }
 
-    func showComposer() {
-        panelController.showComposer(previousApplication: activeExternalApplication)
+    func showNewRequest() {
+        panelController.showNewRequest(previousApplication: activeExternalApplication)
     }
 
     func openWindow() {
         panelController.open(previousApplication: activeExternalApplication)
-    }
-
-    func openHistoryEntry(_ entry: HistoryEntry) {
-        panelController.openHistoryEntry(entry)
     }
 
     func showHistory() {

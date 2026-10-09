@@ -18,7 +18,7 @@ if [[ -n "${FLOATER_PROMPT:-}" ]]; then
         FLOATER_LAUNCH_ARGS+=(--title "$FLOATER_TITLE")
     fi
 else
-    FLOATER_LAUNCH_ARGS=(--show-composer)
+    FLOATER_LAUNCH_ARGS=(--show-new-request)
 fi
 
 /usr/bin/open -n "$FLOATER_APP_BUNDLE" --args "${FLOATER_LAUNCH_ARGS[@]}"

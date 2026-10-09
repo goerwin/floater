@@ -4,6 +4,34 @@ import SwiftUI
 struct PanelKeyboardHandler: NSViewRepresentable {
     let onKeyDown: (NSEvent, NSWindow) -> Bool
 
+    @discardableResult
+    static func moveFocus(
+        in window: NSWindow, identifiers: [String], backwards: Bool, fallback: String? = nil
+    ) -> String? {
+        guard let root = window.contentView else { return nil }
+        let controls = identifiers.compactMap { identifier in
+            root.firstDescendant(where: {
+                $0.identifier?.rawValue == identifier && ($0 as? NSControl)?.isEnabled != false
+            })
+        }
+        guard !controls.isEmpty else { return nil }
+        let responder = window.firstResponder
+        let current = (responder as? NSTextView)?.isFieldEditor == true
+            ? controls.first(where: { ($0 as? NSControl)?.currentEditor() === responder })
+            : responder as? NSView
+        let index = controls.firstIndex(where: { $0 === current })
+            ?? controls.firstIndex(where: { $0.identifier?.rawValue == fallback })
+        let destination = index.map { controls[($0 + (backwards ? controls.count - 1 : 1)) % controls.count] }
+            ?? (backwards ? controls.last! : controls.first!)
+        guard window.makeFirstResponder(destination) else { return nil }
+        if let table = destination as? NSTableView, table.selectedRow == -1, table.numberOfRows > 0 {
+            let row = backwards ? table.numberOfRows - 1 : 0
+            table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            table.scrollRowToVisible(row)
+        }
+        return destination.identifier?.rawValue
+    }
+
     func makeNSView(context: Context) -> KeyEventView {
         let view = KeyEventView()
         view.onKeyDown = onKeyDown

@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 struct HistoryView: View {
@@ -24,7 +25,7 @@ struct HistoryView: View {
                 Text("History")
                     .font(.headline)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                historyButton("New", shortcut: .new, identifier: "historyNew", action: onNew)
+                PanelButton(title: "New", shortcut: .new, identifier: "historyNew", action: onNew)
             }
             VStack(spacing: 8) {
                 HistorySearchField(text: $state.query)
@@ -40,7 +41,7 @@ struct HistoryView: View {
 
                     HistoryList(
                         entries: filteredEntries, selection: $state.selection,
-                        onOpen: open, onDelete: store.delete
+                        onOpen: onOpen, onDelete: store.delete
                     )
                     .overlay {
                         if filteredEntries.isEmpty {
@@ -60,14 +61,14 @@ struct HistoryView: View {
                         Text("\(store.entries.count) of \(HistoryStore.limit) saved")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        historyButton("Clear history…", identifier: "clearHistory", enabled: !store.entries.isEmpty || store.errorMessage != nil) {
+                        PanelButton(title: "Clear history…", isEnabled: !store.entries.isEmpty || store.errorMessage != nil, identifier: "clearHistory") {
                             isConfirmingClear = true
                         }
                         Spacer()
-                        historyButton("Dismiss", shortcut: .dismiss, identifier: "historyDismiss", action: onDismiss)
-                        historyButton("Delete", keyHint: "⌫", identifier: "historyDelete", enabled: selectedEntry != nil, action: deleteSelection)
-                        historyButton("Open result", keyHint: "↩", identifier: "historyOpen", enabled: selectedEntry != nil) {
-                            if let selectedEntry { open(selectedEntry) }
+                        PanelButton(title: "Dismiss", shortcut: .dismiss, identifier: "historyDismiss", action: onDismiss)
+                        PanelButton(title: "Delete", keyHint: "⌫", isEnabled: selectedEntry != nil, identifier: "historyDelete", action: deleteSelection)
+                        PanelButton(title: "Open result", keyHint: "↩", isEnabled: selectedEntry != nil, identifier: "historyOpen") {
+                            if let selectedEntry { onOpen(selectedEntry) }
                         }
                     }
                     .padding(12)
@@ -90,18 +91,6 @@ struct HistoryView: View {
         }
     }
 
-    private func historyButton(
-        _ title: String, shortcut: PanelShortcut? = nil, keyHint: String? = nil,
-        identifier: String, enabled: Bool = true, action: @escaping () -> Void
-    ) -> some View {
-        PanelButton(
-            title: title, shortcut: shortcut, keyHint: keyHint, isEnabled: enabled,
-            isFocused: false, identifier: identifier, onFocus: {}, action: action
-        )
-        .fixedSize()
-        .controlSize(.regular)
-    }
-
     private func handleKeyDown(_ event: NSEvent, window: NSWindow) -> Bool {
         guard window.attachedSheet == nil else { return false }
         if PanelShortcut.dismiss.matches(event) { onDismiss(); return true }
@@ -118,43 +107,29 @@ struct HistoryView: View {
             return true
         }
         if [36, 76].contains(event.keyCode), modifiers.isEmpty, window.firstResponder is NSTableView {
-            if let selectedEntry { open(selectedEntry) }
+            if let selectedEntry { onOpen(selectedEntry) }
             return true
         }
         return false
     }
 
     private func moveFocus(in window: NSWindow, backwards: Bool) {
-        guard let root = window.contentView,
-              let search = root.firstDescendant(where: { $0 is NSSearchField }),
-              let list = root.firstDescendant(where: { $0 is NSTableView }) else { return }
-        let identifiers = ["clearHistory", "historyDismiss", "historyDelete", "historyOpen", "historyNew"]
-        let buttons = identifiers.compactMap { identifier in
-            root.firstDescendant(where: { $0.identifier?.rawValue == identifier && ($0 as? NSControl)?.isEnabled == true })
-        }
-        let controls = [search, list] + buttons
-        let current = window.firstResponder
-        let currentView = (current as? NSTextView)?.isFieldEditor == true ? search : current as? NSView
-        let destination: NSView
-        if let index = controls.firstIndex(where: { $0 === currentView }) {
-            destination = controls[(index + (backwards ? controls.count - 1 : 1)) % controls.count]
-        } else {
-            destination = backwards ? controls.last! : controls.first!
-        }
-        if window.makeFirstResponder(destination), let table = destination as? NSTableView,
-           table.selectedRow == -1, table.numberOfRows > 0 {
-            let row = backwards ? table.numberOfRows - 1 : 0
-            table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-            table.scrollRowToVisible(row)
-        }
+        PanelKeyboardHandler.moveFocus(
+            in: window,
+            identifiers: ["historySearch", "historyList", "clearHistory", "historyDismiss", "historyDelete", "historyOpen", "historyNew"],
+            backwards: backwards
+        )
     }
 
     private func deleteSelection() {
         guard let selectedEntry else { return }
         store.delete(selectedEntry.id)
     }
+}
 
-    private func open(_ entry: HistoryEntry) {
-        onOpen(entry)
-    }
+@MainActor
+final class HistoryViewState: ObservableObject {
+    @Published var query = ""
+    @Published var selection: UUID?
+    var focusedControlIdentifier = "historySearch"
 }

@@ -13,7 +13,7 @@ struct FloaterApp: App {
             .keyboardShortcut("o", modifiers: .command)
 
             Button("New") {
-                AppDelegate.shared?.showComposer()
+                appDelegate.showNewRequest()
             }
             .keyboardShortcut("n", modifiers: .command)
 
