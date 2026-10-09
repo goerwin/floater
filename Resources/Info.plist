@@ -10,6 +10,8 @@
 	<string>Floater</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.goerwin.Floater</string>
+	<key>CFBundleIconFile</key>
+	<string>Floater.icns</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

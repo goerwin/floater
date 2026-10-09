@@ -41,9 +41,11 @@ env SWIFTPM_MODULECACHE_OVERRIDE="$FLOATER_MODULE_CACHE" swift build \
 
 rm -rf "$FLOATER_APP_BUNDLE"
 mkdir -p "$FLOATER_APP_BUNDLE/Contents/MacOS"
+mkdir -p "$FLOATER_APP_BUNDLE/Contents/Resources"
 cp "$FLOATER_BUILD_BIN_DIR/Floater" "$FLOATER_APP_BUNDLE/Contents/MacOS/Floater"
 cp "$FLOATER_BUILD_BIN_DIR/FloaterCLI" "$FLOATER_APP_BUNDLE/Contents/MacOS/floater-cli"
 cp "$FLOATER_ROOT_DIR/Resources/Info.plist" "$FLOATER_APP_BUNDLE/Contents/Info.plist"
+cp "$FLOATER_ROOT_DIR/Resources/Generated/Floater.icns" "$FLOATER_APP_BUNDLE/Contents/Resources/"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $FLOATER_VERSION" "$FLOATER_APP_BUNDLE/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $FLOATER_VERSION" "$FLOATER_APP_BUNDLE/Contents/Info.plist"
 printf 'APPL????' > "$FLOATER_APP_BUNDLE/Contents/PkgInfo"

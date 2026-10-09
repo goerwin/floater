@@ -75,7 +75,7 @@ struct FloaterWindowView: View {
     private var header: some View {
         PanelHeader {
             HStack(spacing: 8) {
-                Image(systemName: "sparkles")
+                Image(systemName: FloaterSymbol.name)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("AI")

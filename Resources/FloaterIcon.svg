@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Floater - Floating panel</title>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#529bff"/>
+      <stop offset="0.5" stop-color="#3869e9"/>
+      <stop offset="1" stop-color="#253aa6"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.3" cy="0.1" r="0.9">
+      <stop stop-color="#b3e8ff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#b3e8ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0.4" y2="1">
+      <stop stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e4f2ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-40%" y="-40%" width="180%" height="190%">
+      <feDropShadow dx="0" dy="26" stdDeviation="24" flood-color="#152965" flood-opacity="0.28"/>
+    </filter>
+    <symbol id="floater-star" viewBox="0 0 108 108">
+      <path d="M54 0C60 34 74 48 108 54C74 60 60 74 54 108C48 74 34 60 0 54C34 48 48 34 54 0Z"/>
+    </symbol>
+  </defs>
+  <rect x="48" y="48" width="928" height="928" rx="208" fill="url(#background)"/>
+  <rect x="48" y="48" width="928" height="928" rx="208" fill="url(#glow)"/>
+  <g filter="url(#shadow)">
+    <rect x="192" y="430" width="536" height="340" rx="70" fill="#a0d8ff" fill-opacity="0.55"/>
+    <rect x="280" y="262" width="536" height="386" rx="70" fill="url(#panel)"/>
+    <path d="M280 354H816" stroke="#527bbc" stroke-opacity="0.18" stroke-width="12"/>
+    <circle cx="334" cy="308" r="10" fill="#527bbc" fill-opacity="0.5"/>
+    <circle cx="366" cy="308" r="10" fill="#527bbc" fill-opacity="0.3"/>
+    <path d="M344 446H520M344 512H658" fill="none" stroke="#668dcc" stroke-opacity="0.7" stroke-width="26" stroke-linecap="round"/>
+    <use href="#floater-star" x="624" y="386" width="108" height="108" fill="#3c65d5"/>
+  </g>
+</svg>

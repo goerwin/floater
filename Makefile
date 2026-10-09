@@ -26,13 +26,14 @@ SWIFTPM_ARGS = --package-path "$(CURDIR)" \
 	--manifest-cache local \
 	--disable-sandbox
 
-.PHONY: help test test-app build dev-app install release release-patch release-minor release-major clean
+.PHONY: help test test-app assets build dev-app install release release-patch release-minor release-major clean
 
 help:
 	@printf '%s\n' \
 		'make test          Run the Swift test suite' \
 		'make test-app      Rebuild and smoke test the app through macOS' \
 		'make dev-app       Quit, rebuild, and launch the local app without tests' \
+		'make assets        Regenerate app and README icons from the source SVG' \
 		'make build         Build Floater.app' \
 		'make install       Install Floater.app in /Applications' \
 		'make release       Build a versioned release DMG' \
@@ -46,6 +47,9 @@ test-app:
 test:
 	@mkdir -p "$(SPM_SCRATCH_DIR)" "$(SPM_CACHE_DIR)" "$(SPM_CONFIG_DIR)" "$(SPM_SECURITY_DIR)" "$(MODULE_CACHE_DIR)"
 	$(SWIFT_ENV) swift test $(SWIFTPM_ARGS)
+
+assets:
+	python3 Scripts/generate-assets.py
 
 build:
 	FLOATER_VERSION="$(VERSION)" Scripts/build-app.sh "$(CONFIGURATION)"

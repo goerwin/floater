@@ -1,5 +1,9 @@
 # Floater
 
+<p align="center">
+  <img src="Resources/Generated/readme-icon.png" width="128" alt="Floater icon">
+</p>
+
 A native macOS menu bar app that displays Apple Intelligence responses in a floating window. Requests run on device using Apple Foundation Models.
 
 Requires macOS 26 or later and a Mac with Apple Intelligence enabled and ready.
