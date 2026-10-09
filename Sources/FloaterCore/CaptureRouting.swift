@@ -99,6 +99,24 @@ public enum FieldRead: Equatable, Sendable {
     case field(String)
 }
 
+public enum LineExpansion {
+    public static func shouldExpand(
+        elementFound: Bool,
+        isSecure: Bool,
+        role: String?,
+        selectedText: String?,
+        selectionUnreadable: Bool
+    ) -> Bool {
+        guard elementFound, !isSecure, roleAllowsExpansion(role), !selectionUnreadable else { return false }
+        guard let selectedText else { return true }
+        return selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    public static func roleAllowsExpansion(_ role: String?) -> Bool {
+        role == "AXTextField" || role == "AXTextArea" || role == "AXComboBox"
+    }
+}
+
 public enum FieldTextChoice {
     public static func interpret(
         elementFound: Bool,

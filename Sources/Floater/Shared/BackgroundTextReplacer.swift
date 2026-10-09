@@ -95,6 +95,7 @@ struct FieldCapture {
     var target: any TextPasteTarget
     var elementFound: Bool
     var isSecure: Bool
+    var role: String? = nil
     var selectedText: String?
     var fieldValue: String?
     var selectionUnreadable: Bool
@@ -113,10 +114,44 @@ enum BackgroundTextReplacer {
             target: target,
             elementFound: snapshot.elementFound,
             isSecure: snapshot.isSecure,
+            role: snapshot.role,
             selectedText: snapshot.selectedText,
             fieldValue: snapshot.fieldValue,
             selectionUnreadable: snapshot.selectionUnreadable
         )
+    }
+
+    static func selectLine(in application: NSRunningApplication) async -> String? {
+        guard sendLineKeys(to: application) else { return nil }
+        for _ in 0..<20 {
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !application.isTerminated else { return nil }
+            if let text = readFocusedField(in: application).selectedText,
+               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return text
+            }
+        }
+        return nil
+    }
+
+    private static func sendLineKeys(to application: NSRunningApplication) -> Bool {
+        guard let source = CGEventSource(stateID: .privateState) else { return false }
+        let strokes: [(CGKeyCode, CGEventFlags)] = [
+            (CGKeyCode(kVK_LeftArrow), .maskCommand),
+            (CGKeyCode(kVK_RightArrow), [.maskCommand, .maskShift]),
+        ]
+        for (key, flags) in strokes {
+            guard let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
+                  let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false) else {
+                return false
+            }
+            down.flags = flags
+            up.flags = flags
+            down.postToPid(application.processIdentifier)
+            Thread.sleep(forTimeInterval: 0.1)
+            up.postToPid(application.processIdentifier)
+        }
+        return true
     }
 
     static func replace(
@@ -177,6 +212,7 @@ private final class AccessibilityPasteTarget: TextPasteTarget {
     fileprivate struct CaptureSnapshot {
         var elementFound: Bool
         var isSecure: Bool
+        var role: String?
         var selectedText: String?
         var fieldValue: String?
         var selectionUnreadable: Bool
@@ -185,23 +221,28 @@ private final class AccessibilityPasteTarget: TextPasteTarget {
     fileprivate func captureSnapshot() -> CaptureSnapshot {
         guard let element else {
             return CaptureSnapshot(
-                elementFound: false, isSecure: false, selectedText: nil, fieldValue: nil, selectionUnreadable: false
+                elementFound: false, isSecure: false, role: nil,
+                selectedText: nil, fieldValue: nil, selectionUnreadable: false
             )
         }
+        let role = Self.attribute(kAXRoleAttribute, from: element) as? String
         if Self.attribute(kAXSubroleAttribute, from: element) as? String == kAXSecureTextFieldSubrole {
             return CaptureSnapshot(
-                elementFound: true, isSecure: true, selectedText: nil, fieldValue: nil, selectionUnreadable: false
+                elementFound: true, isSecure: true, role: role,
+                selectedText: nil, fieldValue: nil, selectionUnreadable: false
             )
         }
         let selection = Self.readSelection(from: element)
         return CaptureSnapshot(
             elementFound: true,
             isSecure: false,
+            role: role,
             selectedText: selection.text,
             fieldValue: Self.attribute(kAXValueAttribute, from: element) as? String,
             selectionUnreadable: selection.unreadable
         )
     }
+
 
     private static func readSelection(from element: AXUIElement) -> (text: String?, unreadable: Bool) {
         let direct = attribute(kAXSelectedTextAttribute, from: element) as? String

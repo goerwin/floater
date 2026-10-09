@@ -475,6 +475,31 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
             if outcome == .failed { outcome = .unreadable }
         }
 
+        if LineExpansion.shouldExpand(
+            elementFound: read.elementFound,
+            isSecure: read.isSecure,
+            role: read.role,
+            selectedText: read.selectedText,
+            selectionUnreadable: read.selectionUnreadable
+        ) {
+            await activateForCapture(application)
+            read = readFocusedField(application)
+            if await BackgroundTextReplacer.selectLine(in: application) != nil {
+                read = readFocusedField(application)
+                let expanded = FieldTextChoice.interpret(
+                    elementFound: read.elementFound,
+                    isSecure: read.isSecure,
+                    selectedText: read.selectedText,
+                    fieldValue: read.fieldValue,
+                    selectionUnreadable: read.selectionUnreadable
+                )
+                // The line selection doubles as the Replace target, so only a real
+                // selection replaces the earlier outcome. Otherwise the fragment or
+                // the empty-field message stands.
+                if case .selection = expanded { outcome = expanded }
+            }
+        }
+
         switch outcome {
         case .selection(let text):
             startCaptured(request, input: text, application: application, target: read.target, selectionOnly: true)

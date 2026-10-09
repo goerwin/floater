@@ -65,6 +65,37 @@ final class CaptureRoutingTests: XCTestCase {
         )
     }
 
+    func testLineExpansionRunsOnlyForBlankCaretInText() {
+        XCTAssertTrue(LineExpansion.shouldExpand(
+            elementFound: true, isSecure: false, role: "AXTextArea",
+            selectedText: nil, selectionUnreadable: false
+        ))
+        XCTAssertTrue(LineExpansion.shouldExpand(
+            elementFound: true, isSecure: false, role: "AXTextField",
+            selectedText: "  ", selectionUnreadable: false
+        ))
+        XCTAssertFalse(LineExpansion.shouldExpand(
+            elementFound: true, isSecure: false, role: "AXTextArea",
+            selectedText: "hi", selectionUnreadable: false
+        ))
+        XCTAssertFalse(LineExpansion.shouldExpand(
+            elementFound: true, isSecure: false, role: "AXTextArea",
+            selectedText: nil, selectionUnreadable: true
+        ))
+        XCTAssertFalse(LineExpansion.shouldExpand(
+            elementFound: true, isSecure: true, role: "AXTextArea",
+            selectedText: nil, selectionUnreadable: false
+        ))
+        XCTAssertFalse(LineExpansion.shouldExpand(
+            elementFound: true, isSecure: false, role: "AXButton",
+            selectedText: nil, selectionUnreadable: false
+        ))
+        XCTAssertFalse(LineExpansion.shouldExpand(
+            elementFound: false, isSecure: false, role: "AXTextArea",
+            selectedText: nil, selectionUnreadable: false
+        ))
+    }
+
     func testFieldChoicePrefersSelectionAndDoesNotTreatABlankFieldAsUnread() {
         XCTAssertEqual(
             FieldTextChoice.interpret(elementFound: true, isSecure: false, selectedText: "  hi  ", fieldValue: "all"),

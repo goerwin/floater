@@ -36,7 +36,7 @@ floater --prompt "Translate to Spanish" --input "Hello, world"
 
 Use `--input -` to read the input from standard input. Repeat `--ignore` with a bundle id to skip that app when choosing where to read and where Replace pastes. Floater remembers the last two other apps, so it can use the one behind an ignored app. Leave Floater running first, or it will not have seen that app.
 
-`--capture-input` reads the selected text, or the whole focused field when nothing is selected. It runs only when `--input` is omitted. Reading and Replace both need Accessibility permission.
+`--capture-input` reads the selected text, or the line under the caret when nothing is selected. It runs only when `--input` is omitted. The captured line stays selected, so Replace swaps that line. Reading and Replace both need Accessibility permission.
 
 ```sh
 floater --prompt "Rewrite this for clarity" --title "Fix Grammar" \
