@@ -1,89 +1,40 @@
 # Floater
 
-Floater is a native macOS utility that opens AI responses in a draggable floating panel. Create a request in New Request, or send one through the `floater` CLI or `floater://` URL scheme. Response text is selectable, so you can copy only part of it.
+A native macOS menu bar app that displays Apple Intelligence responses in a floating window. Requests run on device using Apple Foundation Models.
 
-Floater uses Apple Foundation Models on device. It requires macOS 26 or later and a Mac that supports Apple Intelligence, with Apple Intelligence enabled and ready.
+Requires macOS 26 or later and a Mac with Apple Intelligence enabled and ready.
+
+## Features
+
+- **Floating window:** stays above other apps and can be dragged anywhere.
+- **New Request:** write a prompt with optional input text.
+- **Results:** copy the full response or a selection, edit your request, and run it again.
+- **Replace:** update selected text in the previous app, or the whole field when nothing is selected. Requires Accessibility permission.
+- **History:** search and reopen the latest 100 successful results, saved locally.
+- **Automation:** send requests through the CLI or `floater://` URLs.
 
 ## Build and run
 
 ```sh
-Scripts/build-app.sh
-open build/Floater.app
+make dev-app
 ```
 
-Floater runs in the menu bar. Opening its app icon opens New Request with empty fields, even when Floater is already running. Choose **Open** from the menu bar to bring back the current window, or **New** to start an empty request. The first launch registers the `floater://` URL scheme with macOS.
+Use **New** to start a request, **Open** to return to the current window, and **History** to browse saved results.
 
-In Prompt and Input, **Enter** and **Shift+Enter** add a new line, and **Tab** and **Shift+Tab** insert tabs. Use **Command+R**, **Command+Enter**, or **Run** to submit. **Option+Tab** and **Option+Shift+Tab** move between fields and actions. Outside those editors, ordinary Tab and Shift+Tab also move focus. Response actions follow this order: **Copy, Edit, Replace, Dismiss, History, New**; disabled actions are skipped. Focused buttons activate with Enter or Space. **New** or **Command+N** starts an empty request. Button labels show their keyboard shortcuts.
+## Automation
 
-Pass input as plain text through New Request, `FLOATER_INPUT`, CLI, or URL scheme. Floater wraps nonempty input in `<transcript>...</transcript>` when sending it to the model. The editor and history keep the original input text.
-
-Choose **History** in the panel or menu bar, or **Command+H** to search and reopen completed results. Double-click an entry or select it and choose **Open result**. The saved result opens without generating it again; use **Edit** to change the original prompt or input and rerun it. In the results view, **Command+C** copies selected text or activates Copy when nothing is selected, **Command+E** opens Edit, and **Command+Shift+R** activates Replace when available.
-
-New Request, Results, and History share one floating window that stays above other apps. Drag its background to move it; editors, selectable response text, lists, and buttons keep their normal mouse behavior. In History, **Command+F** focuses search. **Escape** or **Dismiss** returns to the screen that opened History, preserving its draft or response. Dismissing a saved response returns to History with the same search and selection. Copy and successful Replace return directly to the previous app.
-
-Floater keeps the latest 100 successful, nonempty results locally in `~/Library/Application Support/Floater/history.json`, including each prompt, input, response, and date. Failed and canceled requests aren't saved. Delete individual entries or use **Clear history…** to remove all saved history.
-
-## Code structure
-
-The three screens are `NewRequestView`, `HistoryView`, and `ResultsView`, in matching folders under `Sources/Floater`.
-
-- `App` owns startup, the floating window, and `FloaterState`, which coordinates generation, editing, and navigation.
-- `NewRequest`, `History`, and `Results` contain only their screen's UI and related components.
-- `Shared` contains reusable controls, keyboard handling, history storage, and platform services.
-- `FloaterCore` contains the request and URL types shared with the CLI.
-
-Tests follow the same folders. Native window and keyboard helpers live in `Tests/FloaterTests/Shared/WindowTestSupport.swift`.
-
-## Make targets
-
-Run these from the project directory:
-
-- **make test** runs the Swift test suite.
-- **make test-app** rebuilds the app and runs smoke tests through macOS. The terminal or app running it needs Accessibility access. Use `Scripts/test-app.sh --no-build` to test the existing bundle.
-- **make dev-app** quits Floater, rebuilds the local debug app, and opens New Request without running tests. Set `FLOATER_PROMPT`, `FLOATER_INPUT`, and optionally `FLOATER_TITLE` to run a request directly.
-
-Debug builds use version `0.0.0` and skip bundle signing, so development doesn't require an Apple account or signing certificate. macOS may still give executables a linker-generated ad hoc signature. Explicit signing through `CODE_SIGNING_IDENTITY` applies only to release builds. The smoke tests don't exercise Replace, which requires Accessibility permission for Floater; the runner separately needs Accessibility permission to automate the UI.
+Install the app and CLI with `Scripts/install-cli.sh`. Add `~/.local/bin` to your `PATH`, then send a request:
 
 ```sh
-make dev-app FLOATER_PROMPT="Summarize this text" FLOATER_INPUT="Done. Committed" FLOATER_TITLE="Quick test"
-```
-- **make install** builds a release app and copies it to /Applications. macOS will ask for administrator access.
-- **make release VERSION=0.1.0** builds a versioned DMG and checksum.
-- **make release-patch**, **make release-minor**, or **make release-major** previews release notes and asks before pushing a version tag. Pushing the tag starts the GitHub release workflow.
-
-The smoke tests check the built bundle's macOS launch and reopen events, real menu actions, drag regions and control exclusions, bundled CLI delivery, Foundation Models integration, cold URL launch, and Quit. Detailed editing, keyboard, and history behavior stays in `make test`. Smoke requests use a temporary history file through `FLOATER_HISTORY_PATH`; the script quits Floater and removes that file when it finishes. Model generation is reported as skipped when Apple Intelligence is unavailable.
-
-The GitHub release workflow signs the app and needs these repository Actions secrets:
-
-- MAC_BUILD_CERTIFICATE_BASE64
-- MAC_BUILD_CERTIFICATE_BASE64_PASSWORD
-- MAC_APP_CERTIFICATE
-
-## CLI
-
-Install Floater in `~/Applications` and the CLI in `~/.local/bin`:
-
-```sh
-Scripts/install-cli.sh
+floater --prompt "Translate to Spanish" --input "Hello, world"
 ```
 
-Make sure `~/.local/bin` is on your `PATH`, then call it from a shell or automation workflow:
-
-```sh
-floater --prompt "Translate this text to Spanish" --input "Hello, world" --title "Translation"
-cat notes.txt | floater --prompt "Summarize this" --input -
-```
-
-An automation source can also open a URL directly:
+You can also open a request from another app or workflow:
 
 ```text
-floater://prompt?prompt=Translate%20this%20text&input=hola%20mundo&title=Translation
+floater://prompt?prompt=Translate%20to%20Spanish&input=Hello%2C%20world
 ```
 
-The optional `--title` flag or `title` URL parameter sets the panel heading.
+## License
 
-The **Copy** button copies the full response and returns to the previous app. Select any portion of the response and use the normal macOS copy shortcut to copy only that text. **Replace** uses macOS Accessibility to replace selected text in the previous app's focused editable field. When nothing is selected, it replaces the entire field by default. Toggle **Replace entire text** in the menu bar to require a selection instead. Replace stays disabled until Accessibility access is granted. Choose **Enable Accessibility…** in the menu bar to request access and open the relevant System Settings pane. Once granted, the menu shows a disabled **Accessibility enabled** status. Floater checks permission again when a menu opens or the app or its window gains focus. If a field cannot be edited through Accessibility, the response stays open with an error message.
-
-## Licensing
-
-Source code is available under the MIT License. The Floater name and any original app artwork are reserved and are not covered by that license. This project does not reuse Mic Muter's name, icon, or artwork.
+[MIT](LICENSE). The Floater name and original artwork are reserved.
