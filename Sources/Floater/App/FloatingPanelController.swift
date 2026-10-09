@@ -94,16 +94,10 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
             panel.center()
         }
 
-        // The panel only opens from an explicit user action (menu, CLI/URL, submit,
-        // history, or a failed Replace), so taking focus here is always expected.
-        // Plain activate() can be declined when another app just activated, which is
-        // exactly what capture does before showing the panel.
-        NSApp.activate(ignoringOtherApps: true)
+        // The panel is nonactivating: it takes the keyboard without taking over
+        // the app, so the editor behind keeps its selection while shortcuts work.
         panel.makeKeyAndOrderFront(nil)
         panel.orderFrontRegardless()
-        // Activation is asynchronous when Floater was in the background, so the
-        // make-key above can land before the app is active and never take effect.
-        // didBecomeActive re-asserts it once activation completes.
         claimKeyIfVisible()
     }
 
@@ -239,7 +233,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
                 width: FloaterPanelLayout.width,
                 height: FloaterPanelLayout.minimumHeight
             ),
-            styleMask: [.borderless],
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )

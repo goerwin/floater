@@ -18,6 +18,10 @@ public enum SelectedTarget: Equatable, Sendable {
 }
 
 public enum TargetRouting {
+    public static let excludedBundleIdentifiers: Set<String> = [
+        "com.apple.UserNotificationCenter"
+    ]
+
     public static func select(
         previous: TargetCandidate?,
         recent: [TargetCandidate],
@@ -42,7 +46,7 @@ public enum TargetRouting {
     ) -> [TargetCandidate] {
         var result: [TargetCandidate] = []
         func append(_ app: TargetCandidate) {
-            if let ownBundleIdentifier, app.bundleIdentifier == ownBundleIdentifier { return }
+            guard isReportable(app, own: ownBundleIdentifier) else { return }
             if let bundleIdentifier = app.bundleIdentifier,
                result.contains(where: { $0.bundleIdentifier == bundleIdentifier }) {
                 return
@@ -58,8 +62,19 @@ public enum TargetRouting {
         _ app: TargetCandidate, ignored: [String], own: String?
     ) -> Bool {
         guard app.isRunning else { return false }
-        if let own, app.bundleIdentifier == own { return false }
-        if let bundleIdentifier = app.bundleIdentifier, ignored.contains(bundleIdentifier) { return false }
+        if let bundleIdentifier = app.bundleIdentifier {
+            if excludedBundleIdentifiers.contains(bundleIdentifier) { return false }
+            if bundleIdentifier == own { return false }
+            if ignored.contains(bundleIdentifier) { return false }
+        }
+        return true
+    }
+
+    private static func isReportable(_ app: TargetCandidate, own: String?) -> Bool {
+        if let bundleIdentifier = app.bundleIdentifier {
+            if excludedBundleIdentifiers.contains(bundleIdentifier) { return false }
+            if bundleIdentifier == own { return false }
+        }
         return true
     }
 }

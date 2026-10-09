@@ -111,6 +111,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func rememberExternalApplication(_ application: NSRunningApplication) {
         guard application.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
+        if let bundleIdentifier = application.bundleIdentifier,
+           TargetRouting.excludedBundleIdentifiers.contains(bundleIdentifier) {
+            return
+        }
         let identifier = application.bundleIdentifier ?? "pid:\(application.processIdentifier)"
         let identifiers = recentExternalApplications.map {
             $0.bundleIdentifier ?? "pid:\($0.processIdentifier)"

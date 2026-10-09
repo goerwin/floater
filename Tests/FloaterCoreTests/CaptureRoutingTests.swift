@@ -46,6 +46,25 @@ final class CaptureRoutingTests: XCTestCase {
         )
     }
 
+    func testRoutingSkipsNotificationCenterWithoutBeingAsked() {
+        let center = TargetCandidate(
+            name: "Notification Center", bundleIdentifier: "com.apple.UserNotificationCenter", isRunning: true
+        )
+        let editor = TargetCandidate(name: "Code", bundleIdentifier: "com.microsoft.VSCode", isRunning: true)
+
+        XCTAssertEqual(
+            TargetRouting.select(
+                previous: center, recent: [center, editor],
+                ignoredBundleIdentifiers: [], ownBundleIdentifier: "com.floater"
+            ),
+            .recent(1)
+        )
+        XCTAssertEqual(
+            TargetRouting.considered(previous: center, recent: [center], ownBundleIdentifier: "com.floater"),
+            []
+        )
+    }
+
     func testFieldChoicePrefersSelectionAndDoesNotTreatABlankFieldAsUnread() {
         XCTAssertEqual(
             FieldTextChoice.interpret(elementFound: true, isSecure: false, selectedText: "  hi  ", fieldValue: "all"),
