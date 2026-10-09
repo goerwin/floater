@@ -16,7 +16,7 @@ Requires macOS 26 or later and a Mac with Apple Intelligence enabled and ready.
 - **Replace:** paste over selected text in the previous app, or the whole field when nothing is selected. Keeps the result on your clipboard. Requires Accessibility permission.
 - **History:** search and reopen the latest 100 successful results, saved locally.
 - **Updates:** use **Check for Updates...** in the menu to download and install new versions.
-- **Automation:** send requests through the CLI or `floater://` URLs.
+- **Automation:** send requests through the CLI or `floater://` URLs. Skip chosen apps, or read the selected text in the app behind them.
 
 ## Build and run
 
@@ -34,10 +34,20 @@ Install the app and CLI with `Scripts/install-cli.sh`. Add `~/.local/bin` to you
 floater --prompt "Translate to Spanish" --input "Hello, world"
 ```
 
-You can also open a request from another app or workflow:
+Use `--input -` to read the input from standard input. Repeat `--ignore` with a bundle id to skip that app when choosing where to read and where Replace pastes. Floater remembers the last two other apps, so it can use the one behind an ignored app. Leave Floater running first, or it will not have seen that app.
+
+`--capture-input` reads the selected text, or the whole focused field when nothing is selected. It runs only when `--input` is omitted. Reading and Replace both need Accessibility permission.
+
+```sh
+floater --prompt "Rewrite this for clarity" --title "Fix Grammar" \
+  --ignore com.runningwithcrayons.Alfred --capture-input
+```
+
+You can also open a request from another app or workflow. Repeat `ignore` for each bundle id, and set `capture=1` to read the field:
 
 ```text
 floater://prompt?prompt=Translate%20to%20Spanish&input=Hello%2C%20world
+floater://prompt?prompt=Rewrite%20this&ignore=com.runningwithcrayons.Alfred&capture=1
 ```
 
 ## Releases
