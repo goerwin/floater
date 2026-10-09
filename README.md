@@ -48,8 +48,6 @@ Pushing a `vMAJOR.MINOR.PATCH` tag publishes `Floater-<version>.dmg`, `Floater-<
 
 GitHub Actions needs the repository secrets `MAC_APP_CERTIFICATE`, `MAC_BUILD_CERTIFICATE_BASE64`, `MAC_BUILD_CERTIFICATE_BASE64_PASSWORD`, and `SPARKLE_PRIVATE_KEY` to publish releases. The Sparkle key must match `SUPublicEDKey` in `Resources/Info.plist`, shared with Key Remapper.
 
-Versions released before the Sparkle updater was added need one manual installation of a newer release to enable in-app updates.
-
 ## License
 
 [MIT](LICENSE). The Floater name and original artwork are reserved.
