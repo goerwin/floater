@@ -94,7 +94,11 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
             panel.center()
         }
 
-        NSApp.activate()
+        // The panel only opens from an explicit user action (menu, CLI/URL, submit,
+        // history, or a failed Replace), so taking focus here is always expected.
+        // Plain activate() can be declined when another app just activated, which is
+        // exactly what capture does before showing the panel.
+        NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
         panel.orderFrontRegardless()
         // Activation is asynchronous when Floater was in the background, so the
