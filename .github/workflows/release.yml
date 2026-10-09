@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to release, such as v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Resolve version
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Tag '$TAG' is not a stable vMAJOR.MINOR.PATCH version." >&2
+            exit 1
+          fi
+          echo "VERSION=${TAG#v}" >> "$GITHUB_ENV"
+
+      - name: Test
+        run: make test
+
+      - name: Install signing certificate
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.MAC_BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.MAC_BUILD_CERTIFICATE_BASE64_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MAC_BUILD_CERTIFICATE_BASE64_PASSWORD }}
+          APP_CERTIFICATE: ${{ secrets.MAC_APP_CERTIFICATE }}
+        run: |
+          set -euo pipefail
+          for name in BUILD_CERTIFICATE_BASE64 P12_PASSWORD KEYCHAIN_PASSWORD APP_CERTIFICATE; do
+            [[ -n "${!name}" ]] || { echo "$name is required" >&2; exit 1; }
+          done
+
+          keychain="$RUNNER_TEMP/floater-signing.keychain-db"
+          certificate="$RUNNER_TEMP/floater-certificate.p12"
+          trap 'rm -f "$certificate"' EXIT
+          printf '%s' "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o "$certificate"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security import "$certificate" -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$keychain"
+          security list-keychain -d user -s "$keychain"
+
+      - name: Build release DMG
+        env:
+          APP_CERTIFICATE: ${{ secrets.MAC_APP_CERTIFICATE }}
+        run: make release VERSION="$VERSION" CODE_SIGNING_IDENTITY="$APP_CERTIFICATE"
+
+      - name: Prepare release notes
+        run: Scripts/release-notes.sh "$TAG" > "dist/Floater-$VERSION.md"
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          assets=(
+            "dist/Floater-$VERSION.dmg"
+            "dist/Floater-$VERSION-SHA256SUMS"
+          )
+          notes="dist/Floater-$VERSION.md"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --clobber
+            gh release edit "$TAG" --title "Floater $TAG" --notes-file "$notes"
+          else
+            gh release create "$TAG" "${assets[@]}" \
+              --title "Floater $TAG" \
+              --notes-file "$notes" \
+              --verify-tag
+          fi

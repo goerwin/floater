@@ -1,0 +1,107 @@
+import AppKit
+import Carbon.HIToolbox
+import FloaterCore
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    static weak var shared: AppDelegate?
+
+    private let viewModel = FloaterViewModel(provider: FoundationModelsProvider())
+    private var panelController: FloatingPanelController!
+    private var activationObserver: NSObjectProtocol?
+    private var lastExternalApplication: NSRunningApplication?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Self.shared = self
+        panelController = FloatingPanelController(viewModel: viewModel)
+        NSApp.setActivationPolicy(.accessory)
+        observeExternalApplications()
+        registerURLHandler()
+
+        let arguments = ProcessInfo.processInfo.arguments
+        if let request = developmentRequest(from: arguments) {
+            Task { @MainActor [weak self] in
+                await Task.yield()
+                guard let self else { return }
+                self.panelController.handle(request, fallbackApplication: self.activeExternalApplication)
+            }
+        } else if arguments.contains("--show-composer") {
+            Task { @MainActor [weak self] in
+                await Task.yield()
+                self?.showComposer()
+            }
+        }
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    func showComposer() {
+        viewModel.showComposer()
+        panelController.show(previousApplication: activeExternalApplication)
+    }
+
+    private var activeExternalApplication: NSRunningApplication? {
+        if let lastExternalApplication, !lastExternalApplication.isTerminated {
+            return lastExternalApplication
+        }
+        return nil
+    }
+
+    private func developmentRequest(from arguments: [String]) -> PromptRequest? {
+        guard let prompt = argumentValue(after: "--prompt", in: arguments),
+              !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+
+        return PromptRequest(
+            prompt: prompt,
+            input: argumentValue(after: "--input", in: arguments) ?? "",
+            title: argumentValue(after: "--title", in: arguments)
+        )
+    }
+
+    private func argumentValue(after option: String, in arguments: [String]) -> String? {
+        guard let index = arguments.firstIndex(of: option) else { return nil }
+        let valueIndex = arguments.index(after: index)
+        guard valueIndex < arguments.endIndex else { return nil }
+        return arguments[valueIndex]
+    }
+
+    private func observeExternalApplications() {
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let processID = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier else {
+                return
+            }
+
+            Task { @MainActor [weak self] in
+                guard let application = NSRunningApplication(processIdentifier: processID),
+                      application.bundleIdentifier != Bundle.main.bundleIdentifier else { return }
+                self?.lastExternalApplication = application
+            }
+        }
+    }
+
+    private func registerURLHandler() {
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(handleGetURL(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL)
+        )
+    }
+
+    @objc private func handleGetURL(
+        _ event: NSAppleEventDescriptor,
+        withReplyEvent reply: NSAppleEventDescriptor
+    ) {
+        guard let urlString = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
+              let url = URL(string: urlString) else { return }
+        panelController.handle(url, fallbackApplication: activeExternalApplication)
+    }
+}
