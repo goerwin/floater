@@ -1,5 +1,14 @@
 import SwiftUI
 
+struct PanelDragRegion: View {
+    var body: some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .gesture(WindowDragGesture())
+            .allowsWindowActivationEvents(true)
+    }
+}
+
 struct PanelHeader<Content: View>: View {
     let content: Content
 
@@ -15,11 +24,5 @@ struct PanelHeader<Content: View>: View {
         .padding(.horizontal, FloaterPanelLayout.padding)
         .padding(.top, FloaterPanelLayout.padding)
         .padding(.bottom, 8)
-        .background {
-            Color.clear
-                .contentShape(Rectangle())
-                .gesture(WindowDragGesture())
-                .allowsWindowActivationEvents(true)
-        }
     }
 }

@@ -52,6 +52,14 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    func open(previousApplication: NSRunningApplication?) {
+        if panel == nil {
+            showComposer(previousApplication: previousApplication)
+        } else {
+            showPanel()
+        }
+    }
+
     private func showPanel() {
         accessibility.refresh()
 

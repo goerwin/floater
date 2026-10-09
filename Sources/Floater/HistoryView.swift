@@ -76,7 +76,6 @@ struct HistoryView: View {
             .padding([.horizontal, .bottom], FloaterPanelLayout.padding)
         }
         .frame(width: FloaterPanelLayout.width, height: 500)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
         .background {
             PanelKeyboardHandler(onKeyDown: handleKeyDown)
                 .frame(width: 0, height: 0)
@@ -101,7 +100,6 @@ struct HistoryView: View {
         )
         .fixedSize()
         .controlSize(.regular)
-        .disabled(!enabled)
     }
 
     private func handleKeyDown(_ event: NSEvent, window: NSWindow) -> Bool {

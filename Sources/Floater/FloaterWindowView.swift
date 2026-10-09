@@ -8,6 +8,11 @@ struct FloaterWindowView: View {
 
     var body: some View {
         content
+            .background {
+                RoundedRectangle(cornerRadius: 18)
+                    .fill(.regularMaterial)
+                    .overlay { PanelDragRegion() }
+            }
             .onChange(of: navigation.isShowingHistory) { _, _ in onContentChange() }
     }
 

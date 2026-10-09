@@ -11,15 +11,15 @@ Scripts/build-app.sh
 open build/Floater.app
 ```
 
-Floater runs in the menu bar. Choose **New…** to open the composer. The first launch registers the `floater://` URL scheme with macOS.
+Floater runs in the menu bar. Opening its app icon shows an empty composer, even when Floater is already running. Choose **Open** from the menu bar to bring back the current window, or **New** to start an empty request. The first launch registers the `floater://` URL scheme with macOS.
 
 In Prompt and Input, **Enter** and **Shift+Enter** add a new line, and **Tab** and **Shift+Tab** insert tabs. Use **Command+R**, **Command+Enter**, or **Run** to submit. **Option+Tab** and **Option+Shift+Tab** move between fields and actions. Outside those editors, ordinary Tab and Shift+Tab also move focus. Response actions follow this order: **Copy, Edit, Replace, Dismiss, History, New**; disabled actions are skipped. Focused buttons activate with Enter or Space. **New** or **Command+N** starts an empty request. Button labels show their keyboard shortcuts.
 
 Pass input as plain text through the composer, `FLOATER_INPUT`, CLI, or URL scheme. Floater wraps nonempty input in `<transcript>...</transcript>` when sending it to the model. The editor and history keep the original input text.
 
-Choose **History** in the panel, **History…** in the menu bar, or **Command+H** to search and reopen completed results. Double-click an entry or select it and choose **Open result**. The saved result opens without generating it again; use **Edit** to change the original prompt or input and rerun it. In the response view, **Command+C** copies selected text or activates Copy when nothing is selected, **Command+E** opens Edit, and **Command+Shift+R** activates Replace when available.
+Choose **History** in the panel or menu bar, or **Command+H** to search and reopen completed results. Double-click an entry or select it and choose **Open result**. The saved result opens without generating it again; use **Edit** to change the original prompt or input and rerun it. In the response view, **Command+C** copies selected text or activates Copy when nothing is selected, **Command+E** opens Edit, and **Command+Shift+R** activates Replace when available.
 
-The composer, response, and History share one floating window that stays above other apps. In History, **Command+F** focuses search. **Escape** or **Dismiss** returns to the screen that opened History, preserving its draft or response. Dismissing a saved response returns to History with the same search and selection. Copy and successful Replace return directly to the previous app.
+The composer, response, and History share one floating window that stays above other apps. Drag its background to move it; editors, selectable response text, lists, and buttons keep their normal mouse behavior. In History, **Command+F** focuses search. **Escape** or **Dismiss** returns to the screen that opened History, preserving its draft or response. Dismissing a saved response returns to History with the same search and selection. Copy and successful Replace return directly to the previous app.
 
 Floater keeps the latest 100 successful, nonempty results locally in `~/Library/Application Support/Floater/history.json`, including each prompt, input, response, and date. Failed and canceled requests aren't saved. Delete individual entries or use **Clear history…** to remove all saved history.
 
@@ -28,6 +28,7 @@ Floater keeps the latest 100 successful, nonempty results locally in `~/Library/
 Run these from the project directory:
 
 - **make test** runs the Swift test suite.
+- **make test-app** rebuilds the app and runs smoke tests through macOS. The terminal or app running it needs Accessibility access. Use `Scripts/test-app.sh --no-build` to test the existing bundle.
 - **make dev** quits Floater, rebuilds the debug app, and opens the composer. Set `FLOATER_PROMPT`, `FLOATER_INPUT`, and optionally `FLOATER_TITLE` to run a request directly.
 
 ```sh
@@ -36,6 +37,8 @@ make dev FLOATER_PROMPT="Summarize this text" FLOATER_INPUT="Done. Committed" FL
 - **make install** builds a release app and copies it to /Applications. macOS will ask for administrator access.
 - **make release VERSION=0.1.0** builds a versioned DMG and checksum.
 - **make release-patch**, **make release-minor**, or **make release-major** previews release notes and asks before pushing a version tag. Pushing the tag starts the GitHub release workflow.
+
+The smoke tests check the built bundle's macOS launch and reopen events, real menu actions, drag regions and control exclusions, bundled CLI delivery, Foundation Models integration, cold URL launch, and Quit. Detailed editing, keyboard, and history behavior stays in `make test`. Smoke requests use a temporary history file through `FLOATER_HISTORY_PATH`; the script quits Floater and removes that file when it finishes. Model generation is reported as skipped when Apple Intelligence is unavailable.
 
 The GitHub release workflow signs the app and needs these repository Actions secrets:
 

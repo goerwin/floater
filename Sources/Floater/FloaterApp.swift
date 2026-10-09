@@ -7,12 +7,17 @@ struct FloaterApp: App {
 
     var body: some Scene {
         MenuBarExtra("Floater", systemImage: "sparkles") {
-            Button("New…") {
+            Button("Open") {
+                appDelegate.openWindow()
+            }
+            .keyboardShortcut("o", modifiers: .command)
+
+            Button("New") {
                 AppDelegate.shared?.showComposer()
             }
             .keyboardShortcut("n", modifiers: .command)
 
-            Button("History…") {
+            Button("History") {
                 appDelegate.showHistory()
             }
             .keyboardShortcut("h", modifiers: .command)

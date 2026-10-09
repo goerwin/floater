@@ -12,27 +12,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var viewModel = FloaterViewModel(
         provider: FoundationModelsProvider(), historyStore: historyStore
     )
-    private var panelController: FloatingPanelController!
+    private lazy var panelController = FloatingPanelController(
+        viewModel: viewModel, historyStore: historyStore, settings: settings, accessibility: accessibility
+    )
     private var activationObserver: NSObjectProtocol?
     private var lastExternalApplication: NSRunningApplication?
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    func applicationWillFinishLaunching(_ notification: Notification) {
         Self.shared = self
-        panelController = FloatingPanelController(
-            viewModel: viewModel, historyStore: historyStore, settings: settings, accessibility: accessibility
-        )
         NSApp.setActivationPolicy(.accessory)
         observeExternalApplications()
         registerURLHandler()
+    }
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
         let arguments = ProcessInfo.processInfo.arguments
+        let isDefaultLaunch = notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool == true
         if let request = developmentRequest(from: arguments) {
             Task { @MainActor [weak self] in
                 await Task.yield()
                 guard let self else { return }
                 self.panelController.handle(request, fallbackApplication: self.activeExternalApplication)
             }
-        } else if arguments.contains("--show-composer") {
+        } else if arguments.contains("--show-composer") || isDefaultLaunch {
             Task { @MainActor [weak self] in
                 await Task.yield()
                 self?.showComposer()
@@ -44,8 +46,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showComposer()
+        return false
+    }
+
     func showComposer() {
         panelController.showComposer(previousApplication: activeExternalApplication)
+    }
+
+    func openWindow() {
+        panelController.open(previousApplication: activeExternalApplication)
     }
 
     func openHistoryEntry(_ entry: HistoryEntry) {

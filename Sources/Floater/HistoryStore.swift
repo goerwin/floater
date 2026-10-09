@@ -66,7 +66,10 @@ final class HistoryStore: ObservableObject {
     }
 
     private static var defaultFileURL: URL {
-        URL.applicationSupportDirectory
+        if let path = ProcessInfo.processInfo.environment["FLOATER_HISTORY_PATH"], !path.isEmpty {
+            return URL(fileURLWithPath: path)
+        }
+        return URL.applicationSupportDirectory
             .appendingPathComponent("Floater", isDirectory: true)
             .appendingPathComponent("history.json")
     }

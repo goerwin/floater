@@ -44,7 +44,6 @@ struct FloaterPanelView: View {
         }
         .frame(width: FloaterPanelLayout.width, alignment: .top)
         .fixedSize(horizontal: false, vertical: true)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
         .overlay {
             RoundedRectangle(cornerRadius: 18)
                 .stroke(.white.opacity(0.18), lineWidth: 1)
@@ -113,20 +112,17 @@ struct FloaterPanelView: View {
         VStack(alignment: .leading, spacing: 8) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Prompt")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
+                    fieldLabel("Prompt")
 
                     editor(text: $contentState.prompt, placeholder: "What should Floater do?", label: "Prompt", control: .prompt)
 
-                    Text("Optional input")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
+                    fieldLabel("Optional input")
 
                     editor(text: $contentState.input, placeholder: "Add input (optional)", label: "Optional input", control: .input)
                 }
                 .padding(1)
                 .fixedSize(horizontal: false, vertical: true)
+                .background { PanelDragRegion() }
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { composerFieldsHeight = $0 }
             }
             .frame(height: min(composerFieldsHeight, FloaterPanelLayout.maximumEditingHeight - 120))
@@ -162,6 +158,14 @@ struct FloaterPanelView: View {
         )
     }
 
+    private func fieldLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+            .gesture(WindowDragGesture())
+            .allowsWindowActivationEvents(true)
+    }
+
     private func panelButton(
         _ title: String, control: FocusedControl,
         enabled: Bool = true, primary: Bool = false, small: Bool = false,
@@ -176,7 +180,6 @@ struct FloaterPanelView: View {
         )
         .fixedSize()
         .controlSize(small ? .small : .regular)
-        .disabled(!enabled)
     }
 
     private func shortcut(for control: FocusedControl) -> PanelShortcut? {

@@ -26,11 +26,12 @@ SWIFTPM_ARGS = --package-path "$(CURDIR)" \
 	--manifest-cache local \
 	--disable-sandbox
 
-.PHONY: help test build dev install release release-patch release-minor release-major clean
+.PHONY: help test test-app build dev install release release-patch release-minor release-major clean
 
 help:
 	@printf '%s\n' \
 		'make test          Run the Swift test suite' \
+		'make test-app      Rebuild and smoke test the app through macOS' \
 		'make build         Build Floater.app' \
 		'make dev           Rebuild and launch Floater (optional FLOATER_PROMPT, FLOATER_INPUT, FLOATER_TITLE)' \
 		'make install       Install Floater.app in /Applications' \
@@ -38,6 +39,9 @@ help:
 		'make release-patch Create and push the next patch release tag' \
 		'make release-minor Create and push the next minor release tag' \
 		'make release-major Create and push the next major release tag'
+
+test-app:
+	FLOATER_VERSION="$(VERSION)" bash Scripts/test-app.sh
 
 test:
 	@mkdir -p "$(SPM_SCRATCH_DIR)" "$(SPM_CACHE_DIR)" "$(SPM_CONFIG_DIR)" "$(SPM_SECURITY_DIR)" "$(MODULE_CACHE_DIR)"

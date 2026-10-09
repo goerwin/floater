@@ -6,6 +6,46 @@ import XCTest
 
 @MainActor
 final class ComposerTests: XCTestCase {
+    func testOpenCreatesComposerAndPreservesDraftHistoryAndResponse() throws {
+        let model = FloaterViewModel(provider: TestProvider())
+        let controller = FloatingPanelController(viewModel: model)
+        controller.open(previousApplication: nil)
+        let window = try XCTUnwrap(controller.window)
+        defer { controller.hide() }
+        settle(window)
+
+        let prompt = try XCTUnwrap(window.contentView?.firstDescendant(where: { $0.identifier?.rawValue == "prompt" }) as? NSTextView)
+        XCTAssertEqual(prompt.string, "")
+        prompt.insertText("Draft prompt", replacementRange: prompt.selectedRange())
+        settle(window)
+        controller.hide()
+        controller.open(previousApplication: nil)
+        settle(window)
+        XCTAssertTrue(window.isVisible)
+        XCTAssertEqual(prompt.string, "Draft prompt")
+
+        controller.showHistory()
+        settle(window)
+        controller.open(previousApplication: nil)
+        XCTAssertTrue(controller.isShowingHistory)
+        controller.hide()
+        controller.open(previousApplication: nil)
+        settle(window)
+        XCTAssertTrue(window.isVisible)
+        XCTAssertTrue(controller.isShowingHistory)
+
+        let entry = HistoryEntry(request: PromptRequest(prompt: "Saved prompt"), response: "Saved response")
+        controller.openHistoryEntry(entry)
+        settle(window)
+        controller.hide()
+        controller.open(previousApplication: nil)
+        settle(window)
+        XCTAssertTrue(window.isVisible)
+        XCTAssertFalse(controller.isShowingHistory)
+        XCTAssertEqual(model.currentRequest, entry.request)
+        XCTAssertEqual(model.response, entry.response)
+    }
+
     func testOpeningMenuRefreshesAccessibilityStatusWithoutWindowActivation() {
         _ = NSApplication.shared
         var granted = false
