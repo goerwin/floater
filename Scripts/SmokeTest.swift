@@ -156,15 +156,6 @@ private final class AppSmokeTest {
         frame = try bounds(window)
         try drag(from: CGPoint(x: frame.minX + 120, y: frame.minY + 20), by: CGVector(dx: -30, dy: -15))
         try wait("header drag") { try self.bounds(window).origin != frame.origin }
-        let label = try require(descendants(root).first { string($0, kAXValueAttribute) == "Prompt" }, "Prompt label missing")
-        let labelFrame = try bounds(label)
-        frame = try bounds(window)
-        try drag(from: CGPoint(x: labelFrame.midX, y: labelFrame.midY), by: CGVector(dx: 30, dy: 15))
-        try wait("noninteractive label drag") { try self.bounds(window).origin != frame.origin }
-        let updatedLabelFrame = try bounds(label)
-        frame = try bounds(window)
-        try drag(from: CGPoint(x: frame.minX + 150, y: updatedLabelFrame.maxY + 4), by: CGVector(dx: -30, dy: -15))
-        try wait("editor spacing drag") { try self.bounds(window).origin != frame.origin }
         print("PASS: body background drags the panel")
 
         let prompt = try require(element("prompt"), "Prompt missing")

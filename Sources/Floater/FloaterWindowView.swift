@@ -11,7 +11,9 @@ struct FloaterWindowView: View {
             .background {
                 RoundedRectangle(cornerRadius: 18)
                     .fill(.regularMaterial)
-                    .overlay { PanelDragRegion() }
+                    .contentShape(Rectangle())
+                    .gesture(WindowDragGesture())
+                    .allowsWindowActivationEvents(true)
             }
             .onChange(of: navigation.isShowingHistory) { _, _ in onContentChange() }
     }

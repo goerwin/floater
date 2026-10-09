@@ -1,14 +1,5 @@
 import SwiftUI
 
-struct PanelDragRegion: View {
-    var body: some View {
-        Color.clear
-            .contentShape(Rectangle())
-            .gesture(WindowDragGesture())
-            .allowsWindowActivationEvents(true)
-    }
-}
-
 struct PanelHeader<Content: View>: View {
     let content: Content
 

@@ -122,7 +122,6 @@ struct FloaterPanelView: View {
                 }
                 .padding(1)
                 .fixedSize(horizontal: false, vertical: true)
-                .background { PanelDragRegion() }
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { composerFieldsHeight = $0 }
             }
             .frame(height: min(composerFieldsHeight, FloaterPanelLayout.maximumEditingHeight - 120))
@@ -162,8 +161,6 @@ struct FloaterPanelView: View {
         Text(title)
             .font(.caption.weight(.medium))
             .foregroundStyle(.secondary)
-            .gesture(WindowDragGesture())
-            .allowsWindowActivationEvents(true)
     }
 
     private func panelButton(

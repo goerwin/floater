@@ -4,7 +4,11 @@ set -euo pipefail
 FLOATER_ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 FLOATER_BUILD_CONFIGURATION="${1:-release}"
 FLOATER_APP_BUNDLE="$FLOATER_ROOT_DIR/build/Floater.app"
-FLOATER_VERSION="${FLOATER_VERSION:-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$FLOATER_ROOT_DIR/Resources/Info.plist")}"
+if [[ "$FLOATER_BUILD_CONFIGURATION" == debug ]]; then
+    FLOATER_VERSION=0.0.0
+else
+    FLOATER_VERSION="${FLOATER_VERSION:-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$FLOATER_ROOT_DIR/Resources/Info.plist")}"
+fi
 FLOATER_MODULE_CACHE="$FLOATER_ROOT_DIR/.build/module-cache"
 FLOATER_SPM_CACHE="$FLOATER_ROOT_DIR/.build/spm-cache"
 FLOATER_SPM_CONFIG="$FLOATER_ROOT_DIR/.build/spm-config"
@@ -44,7 +48,7 @@ cp "$FLOATER_ROOT_DIR/Resources/Info.plist" "$FLOATER_APP_BUNDLE/Contents/Info.p
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $FLOATER_VERSION" "$FLOATER_APP_BUNDLE/Contents/Info.plist"
 printf 'APPL????' > "$FLOATER_APP_BUNDLE/Contents/PkgInfo"
 
-if [[ -n "${CODE_SIGNING_IDENTITY:-}" ]]; then
+if [[ "$FLOATER_BUILD_CONFIGURATION" != debug && -n "${CODE_SIGNING_IDENTITY:-}" ]]; then
     /usr/bin/codesign --force --options runtime --timestamp --sign "$CODE_SIGNING_IDENTITY" "$FLOATER_APP_BUNDLE/Contents/MacOS/floater-cli"
     /usr/bin/codesign --force --options runtime --timestamp --sign "$CODE_SIGNING_IDENTITY" "$FLOATER_APP_BUNDLE"
     /usr/bin/codesign --verify --deep --strict --verbose=2 "$FLOATER_APP_BUNDLE"

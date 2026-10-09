@@ -31,6 +31,8 @@ Run these from the project directory:
 - **make test-app** rebuilds the app and runs smoke tests through macOS. The terminal or app running it needs Accessibility access. Use `Scripts/test-app.sh --no-build` to test the existing bundle.
 - **make dev** quits Floater, rebuilds the debug app, and opens the composer. Set `FLOATER_PROMPT`, `FLOATER_INPUT`, and optionally `FLOATER_TITLE` to run a request directly.
 
+Debug builds use version `0.0.0` and skip bundle signing, so development doesn't require an Apple account or signing certificate. macOS may still give executables a linker-generated ad hoc signature. Explicit signing through `CODE_SIGNING_IDENTITY` applies only to release builds. The smoke tests don't exercise Replace, which requires Accessibility permission for Floater; the runner separately needs Accessibility permission to automate the UI.
+
 ```sh
 make dev FLOATER_PROMPT="Summarize this text" FLOATER_INPUT="Done. Committed" FLOATER_TITLE="Quick test"
 ```

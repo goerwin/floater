@@ -41,7 +41,7 @@ help:
 		'make release-major Create and push the next major release tag'
 
 test-app:
-	FLOATER_VERSION="$(VERSION)" bash Scripts/test-app.sh
+	bash Scripts/test-app.sh
 
 test:
 	@mkdir -p "$(SPM_SCRATCH_DIR)" "$(SPM_CACHE_DIR)" "$(SPM_CONFIG_DIR)" "$(SPM_SECURITY_DIR)" "$(MODULE_CACHE_DIR)"
@@ -51,7 +51,7 @@ build:
 	FLOATER_VERSION="$(VERSION)" Scripts/build-app.sh "$(CONFIGURATION)"
 
 dev:
-	FLOATER_VERSION="$(VERSION)" bash Scripts/dev.sh
+	bash Scripts/dev.sh
 
 install:
 	FLOATER_VERSION="$(VERSION)" Scripts/build-app.sh release
