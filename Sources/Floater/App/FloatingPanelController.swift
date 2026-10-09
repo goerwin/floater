@@ -8,27 +8,38 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     private let historyStore: HistoryStore
     private let settings: AppSettings
     private let accessibility: AccessibilityAccess
+    private let captureTarget: @MainActor (NSRunningApplication) -> any TextPasteTarget
+    private let replaceText: @MainActor (String, any TextPasteTarget, Bool) async throws -> Void
     private let historyState = HistoryViewState()
     private var panel: FloaterPanel?
     private var hostingView: NSHostingView<FloaterWindowView>?
     private var previousApplication: NSRunningApplication?
+    private var replacementTarget: (any TextPasteTarget)?
     private var resizeScheduled = false
     private var historyFocusNeedsRestore = false
+    private var isReplacing = false
 
     init(
         state: FloaterState, historyStore: HistoryStore = HistoryStore(fileURL: nil),
-        settings: AppSettings = AppSettings(), accessibility: AccessibilityAccess = AccessibilityAccess()
+        settings: AppSettings = AppSettings(), accessibility: AccessibilityAccess = AccessibilityAccess(),
+        captureTarget: @escaping @MainActor (NSRunningApplication) -> any TextPasteTarget = {
+            BackgroundTextReplacer.capture(in: $0)
+        },
+        replaceText: @escaping @MainActor (String, any TextPasteTarget, Bool) async throws -> Void = {
+            try await BackgroundTextReplacer.replace($0, in: $1, allowWholeField: $2)
+        }
     ) {
         self.state = state
         self.historyStore = historyStore
         self.settings = settings
         self.accessibility = accessibility
+        self.captureTarget = captureTarget
+        self.replaceText = replaceText
     }
 
     func show(previousApplication: NSRunningApplication?) {
         state.showRequest()
-        self.previousApplication = previousApplication
-        state.setCanReplace(previousApplication != nil && previousApplication?.isTerminated == false)
+        rememberTarget(in: previousApplication)
         showPanel()
         if let initialFirstResponder = panel?.initialFirstResponder {
             panel?.makeFirstResponder(initialFirstResponder)
@@ -54,6 +65,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
 
         NSApp.activate()
         panel.makeKeyAndOrderFront(nil)
+        panel.orderFrontRegardless()
     }
 
     func dismiss() {
@@ -83,8 +95,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     func showHistory(previousApplication: NSRunningApplication? = nil) {
         guard !isShowingHistory else { showPanel(); return }
         if !isVisible {
-            self.previousApplication = previousApplication
-            state.setCanReplace(previousApplication != nil && previousApplication?.isTerminated == false)
+            rememberTarget(in: previousApplication)
         }
         state.showHistory(returnToRequest: isVisible)
         historyFocusNeedsRestore = true
@@ -109,23 +120,30 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     }
 
     func replaceAndDismiss() {
-        guard !state.response.isEmpty,
+        guard !isReplacing, !state.response.isEmpty,
               let application = previousApplication,
               !application.isTerminated else { return }
         state.setActionError(nil)
         accessibility.refresh()
         guard accessibility.isGranted else {
-            state.setActionError("Allow Floater in System Settings > Privacy & Security > Accessibility, then try Replace again.")
+            writeToPasteboard(state.response)
+            state.setActionError("Allow Floater in System Settings > Privacy & Security > Accessibility, then try Replace again. The result is copied.")
             return
         }
-        do {
-            try BackgroundTextReplacer.replace(
-                state.response, in: application,
-                allowWholeField: settings.replaceWholeFieldWhenUnselected
-            )
-            closeAndRestoreApplication()
-        } catch {
-            state.setActionError(error.localizedDescription)
+        let target = replacementTarget ?? captureTarget(application)
+        replacementTarget = target
+        let response = state.response
+        let allowWholeField = settings.replaceWholeFieldWhenUnselected
+        isReplacing = true
+        hide()
+        Task { @MainActor [self] in
+            defer { isReplacing = false }
+            do {
+                try await replaceText(response, target, allowWholeField)
+            } catch {
+                state.setActionError(error.localizedDescription)
+                showPanel()
+            }
         }
     }
 
@@ -161,7 +179,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
                 width: FloaterPanelLayout.width,
                 height: FloaterPanelLayout.minimumHeight
             ),
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )
@@ -296,6 +314,13 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         guard let application = previousApplication, !application.isTerminated else { return }
         application.activate()
     }
+
+    private func rememberTarget(in application: NSRunningApplication?) {
+        accessibility.refresh()
+        previousApplication = application
+        replacementTarget = accessibility.isGranted ? application.map(captureTarget) : nil
+        state.setCanReplace(application != nil && application?.isTerminated == false)
+    }
 }
 
 final class FloaterPanel: NSPanel {
@@ -303,7 +328,7 @@ final class FloaterPanel: NSPanel {
     weak var keyboardHandlerOwner: AnyObject?
 
     override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
+    override var canBecomeMain: Bool { false }
 
     override func sendEvent(_ event: NSEvent) {
         if attachedSheet == nil, event.type == .keyDown, onKeyDown?(event) == true { return }

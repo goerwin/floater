@@ -1,56 +1,170 @@
 import AppKit
+import FloaterCore
 import XCTest
 @testable import Floater
 
 @MainActor
 final class TextReplacementTests: XCTestCase {
-    func testReplaceUpdatesOnlySelectionAndSupportsUndo() throws {
+    func testReplaceHidesPanelPreventsDuplicateWritesAndRestoresResultAfterFailure() async throws {
+        let model = FloaterState(provider: TestProvider())
+        let request = PromptRequest(prompt: "Test prompt")
+        model.restore(request: request, response: "Replacement")
+        var calls = 0
+        var pending: CheckedContinuation<Void, any Error>?
+        let target = NativePasteTarget(makeEditor("Original"), pasteboard: testPasteboard())
+        var captures = 0
+        let controller = FloatingPanelController(
+            state: model,
+            accessibility: AccessibilityAccess(isTrusted: { true }, requestAccess: {}),
+            captureTarget: { _ in
+                captures += 1
+                return target
+            },
+            replaceText: { text, capturedTarget, _ in
+                calls += 1
+                XCTAssertEqual(text, "Replacement")
+                XCTAssertTrue(capturedTarget as? NativePasteTarget === target)
+                try await withCheckedThrowingContinuation { pending = $0 }
+            }
+        )
+        controller.show(previousApplication: .current)
+        defer { controller.hide() }
+        XCTAssertEqual(captures, 1)
+        XCTAssertFalse(try XCTUnwrap(controller.window).canBecomeMain)
+        XCTAssertFalse(try XCTUnwrap(controller.window).styleMask.contains(.nonactivatingPanel))
+        controller.replaceAndDismiss()
+        XCTAssertFalse(controller.isVisible)
+        controller.replaceAndDismiss()
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(calls, 1)
+        try XCTUnwrap(pending).resume(throwing: TextReplacementError.unsupported)
+        pending = nil
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertTrue(controller.isVisible)
+        XCTAssertEqual(model.currentRequest, request)
+        XCTAssertEqual(model.response, "Replacement")
+        XCTAssertEqual(model.actionErrorMessage, TextReplacementError.unsupported.localizedDescription)
+
+        controller.replaceAndDismiss()
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(calls, 2)
+        try XCTUnwrap(pending).resume()
+        pending = nil
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertFalse(controller.isVisible)
+        XCTAssertNil(model.actionErrorMessage)
+        XCTAssertEqual(captures, 1)
+    }
+
+    func testPasteUpdatesOnlySelectionKeepsClipboardAndSupportsUndo() async throws {
         let editor = makeEditor("Before 👋🏽 selected after")
         let window = NSWindow(contentRect: editor.frame, styleMask: .titled, backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = editor
         defer { window.close() }
         editor.setSelectedRange((editor.string as NSString).range(of: "👋🏽 selected"))
-        try TextReplacement.apply("result", to: NativeTextTarget(editor), allowWholeField: false)
+        let pasteboard = testPasteboard()
+        pasteboard.setString("Previous clipboard", forType: .string)
+        let target = NativePasteTarget(editor, pasteboard: pasteboard)
+        try await TextReplacement.apply("result", to: target, allowWholeField: false, pasteboard: pasteboard)
         XCTAssertEqual(editor.string, "Before result after")
-        let undoManager = try XCTUnwrap(editor.undoManager)
-        undoManager.undo()
+        XCTAssertEqual(target.commands, [.paste])
+        XCTAssertEqual(pasteboard.string(forType: .string), "result")
+        try XCTUnwrap(editor.undoManager).undo()
         XCTAssertEqual(editor.string, "Before 👋🏽 selected after")
     }
 
-    func testReplaceWithoutSelectionOverwritesWholeFieldWhenEnabled() throws {
+    func testPasteWithoutSelectionOverwritesWholeFieldWhenEnabled() async throws {
         let editor = makeEditor("Original\nfield contents")
         editor.setSelectedRange(NSRange(location: 8, length: 0))
-        try TextReplacement.apply("New\nresponse", to: NativeTextTarget(editor), allowWholeField: true)
+        let pasteboard = testPasteboard()
+        let target = NativePasteTarget(editor, pasteboard: pasteboard)
+        try await TextReplacement.apply("New\nresponse", to: target, allowWholeField: true, pasteboard: pasteboard)
         XCTAssertEqual(editor.string, "New\nresponse")
-        XCTAssertEqual(editor.selectedRange(), NSRange(location: 12, length: 0))
+        XCTAssertEqual(target.commands, [.selectAll, .paste])
+        XCTAssertEqual(pasteboard.string(forType: .string), "New\nresponse")
     }
 
-    func testReplaceWithoutSelectionLeavesFieldUntouchedWhenDisabled() {
+    func testPasteIntoEmptyField() async throws {
+        let editor = makeEditor("")
+        let pasteboard = testPasteboard()
+        let target = NativePasteTarget(editor, pasteboard: pasteboard)
+        try await TextReplacement.apply("result", to: target, allowWholeField: true, pasteboard: pasteboard)
+        XCTAssertEqual(editor.string, "result")
+    }
+
+    func testNoSelectionLeavesFieldUntouchedWhenWholeFieldIsDisabled() async throws {
         let editor = makeEditor("Original contents")
         editor.setSelectedRange(NSRange(location: 8, length: 0))
-        XCTAssertThrowsError(try TextReplacement.apply("result", to: NativeTextTarget(editor), allowWholeField: false)) {
-            XCTAssertEqual($0 as? TextReplacementError, .selectionRequired)
+        let pasteboard = testPasteboard()
+        let target = NativePasteTarget(editor, pasteboard: pasteboard)
+        do {
+            try await TextReplacement.apply("result", to: target, allowWholeField: false, pasteboard: pasteboard)
+            XCTFail("Expected selectionRequired")
+        } catch {
+            XCTAssertEqual(error as? TextReplacementError, .selectionRequired)
         }
         XCTAssertEqual(editor.string, "Original contents")
         XCTAssertEqual(editor.selectedRange(), NSRange(location: 8, length: 0))
+        XCTAssertTrue(target.commands.isEmpty)
+        XCTAssertEqual(pasteboard.string(forType: .string), "result")
     }
 
-    func testReadOnlyFieldIsNotChanged() {
+    func testUnreadableSelectionCopiesResultWithoutSendingSelectAllOrPaste() async throws {
+        let editor = makeEditor("Original contents")
+        let pasteboard = testPasteboard()
+        let target = NativePasteTarget(editor, pasteboard: pasteboard)
+        target.selectionOverride = .unavailable
+        do {
+            try await TextReplacement.apply("result", to: target, allowWholeField: true, pasteboard: pasteboard)
+            XCTFail("Expected invalidSelection")
+        } catch {
+            XCTAssertEqual(error as? TextReplacementError, .invalidSelection)
+        }
+        XCTAssertEqual(editor.string, "Original contents")
+        XCTAssertTrue(target.commands.isEmpty)
+        XCTAssertEqual(pasteboard.string(forType: .string), "result")
+    }
+
+    func testReadOnlyFieldIsNotChanged() async throws {
         let editor = makeEditor("Read only")
         editor.isEditable = false
-        XCTAssertThrowsError(try TextReplacement.apply("result", to: NativeTextTarget(editor), allowWholeField: true)) {
-            XCTAssertEqual($0 as? TextReplacementError, .notEditable)
+        let pasteboard = testPasteboard()
+        let target = NativePasteTarget(editor, pasteboard: pasteboard)
+        do {
+            try await TextReplacement.apply("result", to: target, allowWholeField: true, pasteboard: pasteboard)
+            XCTFail("Expected notEditable")
+        } catch {
+            XCTAssertEqual(error as? TextReplacementError, .notEditable)
         }
         XCTAssertEqual(editor.string, "Read only")
+        XCTAssertTrue(target.commands.isEmpty)
     }
 
-    func testInvalidSelectionIsRejected() {
-        let target = InvalidTextTarget()
-        XCTAssertThrowsError(try TextReplacement.apply("result", to: target, allowWholeField: true)) {
-            XCTAssertEqual($0 as? TextReplacementError, .invalidSelection)
+    func testFocusChangeAfterSelectAllPreventsPaste() async throws {
+        let editor = makeEditor("Original contents")
+        let pasteboard = testPasteboard()
+        let target = NativePasteTarget(editor, pasteboard: pasteboard)
+        target.loseFocusAfterSelectAll = true
+        do {
+            try await TextReplacement.apply("result", to: target, allowWholeField: true, pasteboard: pasteboard)
+            XCTFail("Expected noFocusedField")
+        } catch {
+            XCTAssertEqual(error as? TextReplacementError, .noFocusedField)
         }
-        XCTAssertFalse(target.wasWritten)
+        XCTAssertEqual(editor.string, "Original contents")
+        XCTAssertEqual(target.commands, [.selectAll])
+        XCTAssertEqual(pasteboard.string(forType: .string), "result")
+    }
+
+    func testSelectionMetadataDoesNotDependOnFullDocumentValue() {
+        XCTAssertEqual(TextSelection.read(range: NSRange(location: 1000, length: 10), selectedText: nil), .selected)
+        XCTAssertEqual(TextSelection.read(range: NSRange(location: 1000, length: 0), selectedText: nil), .none)
+        XCTAssertEqual(TextSelection.read(range: nil, selectedText: "selected"), .selected)
+        XCTAssertEqual(TextSelection.read(range: NSRange(location: 0, length: 0), selectedText: "selected"), .selected)
+        XCTAssertEqual(TextSelection.read(range: nil, selectedText: ""), .unavailable)
+        XCTAssertEqual(TextSelection.read(range: nil, selectedText: nil), .unavailable)
+        XCTAssertEqual(TextSelection.read(range: NSRange(location: NSNotFound, length: 0), selectedText: nil), .unavailable)
     }
 
     func testConfigurationPersistsAcrossInstances() throws {
@@ -65,6 +179,10 @@ final class TextReplacementTests: XCTestCase {
         XCTAssertTrue(AppSettings(defaults: defaults).replaceWholeFieldWhenUnselected)
     }
 
+    private func testPasteboard() -> NSPasteboard {
+        NSPasteboard.withUniqueName()
+    }
+
     private func makeEditor(_ text: String) -> NSTextView {
         _ = NSApplication.shared
         let editor = NSTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 200))
@@ -76,22 +194,42 @@ final class TextReplacementTests: XCTestCase {
 }
 
 @MainActor
-private struct NativeTextTarget: EditableTextTarget {
+private final class NativePasteTarget: TextPasteTarget {
     let editor: NSTextView
-    init(_ editor: NSTextView) { self.editor = editor }
-    var text: String { editor.string }
-    var selectedRange: NSRange { editor.selectedRange() }
-    var isEditable: Bool { editor.isEditable }
-    func replaceCharacters(in range: NSRange, with replacement: String) throws {
-        editor.insertText(replacement, replacementRange: range)
-    }
-}
+    let pasteboard: NSPasteboard
+    var commands: [PasteCommand] = []
+    var selectionOverride: TextSelection?
+    var loseFocusAfterSelectAll = false
+    private var isFocused = false
 
-@MainActor
-private final class InvalidTextTarget: EditableTextTarget {
-    let text = "Text"
-    let selectedRange = NSRange(location: Int.max, length: Int.max)
-    let isEditable = true
-    var wasWritten = false
-    func replaceCharacters(in range: NSRange, with replacement: String) throws { wasWritten = true }
+    init(_ editor: NSTextView, pasteboard: NSPasteboard) {
+        self.editor = editor
+        self.pasteboard = pasteboard
+    }
+
+    var selection: TextSelection {
+        guard isFocused else { return .unavailable }
+        return selectionOverride ?? TextSelection.read(range: editor.selectedRange(), selectedText: nil)
+    }
+
+    func focus() async throws {
+        guard editor.isEditable else { throw TextReplacementError.notEditable }
+        isFocused = true
+    }
+
+    func checkFocus() throws {
+        guard isFocused else { throw TextReplacementError.noFocusedField }
+    }
+
+    func send(_ command: PasteCommand) throws {
+        try checkFocus()
+        commands.append(command)
+        switch command {
+        case .selectAll:
+            editor.selectAll(nil)
+            if loseFocusAfterSelectAll { isFocused = false }
+        case .paste:
+            XCTAssertTrue(editor.readSelection(from: pasteboard, type: .string))
+        }
+    }
 }

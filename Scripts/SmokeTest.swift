@@ -61,6 +61,9 @@ private final class AppSmokeTest {
         try check(element("historySearch") != nil, "Open must keep the current History view")
         try menu("New")
         try wait("New menu action") { self.element("prompt") != nil }
+        try wait("New request takes keyboard focus") {
+            NSWorkspace.shared.frontmostApplication?.processIdentifier == self.application?.processIdentifier
+        }
         try set(try require(element("prompt"), "Prompt missing"), value: "Smoke draft")
         try press(try require(element("dismiss"), "Dismiss missing"))
         try wait("dismiss") { self.windows.isEmpty }
@@ -82,6 +85,9 @@ private final class AppSmokeTest {
             return !generating && (self.element("responseText") != nil || self.texts.contains { $0.contains("Apple Intelligence") && !$0.contains("Thinking") })
         }
         if let response = element("responseText") {
+            try wait("result takes keyboard focus") {
+                NSWorkspace.shared.frontmostApplication?.processIdentifier == self.application?.processIdentifier
+            }
             let text = try require(descendants(response).first {
                 string($0, kAXRoleAttribute) == kAXStaticTextRole && !string($0, kAXValueAttribute).isEmpty
             }, "Generated response text missing")
