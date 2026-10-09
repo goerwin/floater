@@ -35,6 +35,14 @@ You can also open a request from another app or workflow:
 floater://prompt?prompt=Translate%20to%20Spanish&input=Hello%2C%20world
 ```
 
+## Releases
+
+Run `make release-patch`, `make release-minor`, or `make release-major` to preview and confirm a version tag push. Keep the working tree clean first. You can also run **Release** from the GitHub Actions tab with a tag.
+
+Pushing a `vMAJOR.MINOR.PATCH` tag publishes `Floater-<version>.dmg` and `Floater-<version>-SHA256SUMS`. Verify the DMG with `shasum -c Floater-<version>-SHA256SUMS`.
+
+GitHub Actions needs the repository secrets `MAC_APP_CERTIFICATE`, `MAC_BUILD_CERTIFICATE_BASE64`, and `MAC_BUILD_CERTIFICATE_BASE64_PASSWORD` to publish releases.
+
 ## License
 
 [MIT](LICENSE). The Floater name and original artwork are reserved.
