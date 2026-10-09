@@ -143,7 +143,12 @@ struct HistoryView: View {
         } else {
             destination = backwards ? controls.last! : controls.first!
         }
-        window.makeFirstResponder(destination)
+        if window.makeFirstResponder(destination), let table = destination as? NSTableView,
+           table.selectedRow == -1, table.numberOfRows > 0 {
+            let row = backwards ? table.numberOfRows - 1 : 0
+            table.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            table.scrollRowToVisible(row)
+        }
     }
 
     private func deleteSelection() {

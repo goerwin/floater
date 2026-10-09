@@ -8,6 +8,63 @@ import XCTest
 final class HistoryViewTests: XCTestCase {
     private var controller: FloatingPanelController?
     private var model: FloaterViewModel?
+
+    func testTabIntoListSelectsAnEdgeRowInTheTraversalDirection() throws {
+        for modifiers: NSEvent.ModifierFlags in [[], .option, .shift, [.option, .shift]] {
+            let store = HistoryStore(fileURL: nil)
+            for index in 1...3 {
+                store.record(PromptRequest(prompt: "Sample \(index)"), response: "Result \(index)")
+            }
+            let window = makeWindow(store: store)
+            defer { window.close() }
+            let root = try XCTUnwrap(window.contentView)
+            let list = try XCTUnwrap(descendants(of: NSTableView.self, in: root).first)
+            XCTAssertEqual(list.selectedRow, -1)
+            let backwards = modifiers.contains(.shift)
+            let source = backwards
+                ? try XCTUnwrap(root.firstDescendant(where: { $0.identifier?.rawValue == "clearHistory" }))
+                : try XCTUnwrap(root.firstDescendant(where: { $0.identifier?.rawValue == "historySearch" }))
+            window.makeFirstResponder(source)
+            sendKey("\t", code: 48, modifiers: modifiers, to: window)
+            let expectedRow = backwards ? store.entries.count - 1 : 0
+            XCTAssertTrue(window.firstResponder === list)
+            XCTAssertEqual(list.selectedRow, expectedRow)
+            sendKey("\r", code: 36, to: window)
+            XCTAssertEqual(model?.currentRequest, store.entries[expectedRow].request)
+        }
+    }
+
+    func testTabIntoListPreservesAnExistingSelection() throws {
+        let store = HistoryStore(fileURL: nil)
+        for index in 1...3 {
+            store.record(PromptRequest(prompt: "Sample \(index)"), response: "Result \(index)")
+        }
+        let window = makeWindow(store: store)
+        defer { window.close() }
+        let root = try XCTUnwrap(window.contentView)
+        let list = try XCTUnwrap(descendants(of: NSTableView.self, in: root).first)
+        list.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
+        settle(window)
+        for modifiers: NSEvent.ModifierFlags in [[], .option, .shift, [.option, .shift]] {
+            let source = modifiers.contains(.shift)
+                ? try XCTUnwrap(root.firstDescendant(where: { $0.identifier?.rawValue == "clearHistory" }))
+                : try XCTUnwrap(root.firstDescendant(where: { $0.identifier?.rawValue == "historySearch" }))
+            window.makeFirstResponder(source)
+            sendKey("\t", code: 48, modifiers: modifiers, to: window)
+            XCTAssertTrue(window.firstResponder === list)
+            XCTAssertEqual(list.selectedRow, 1)
+        }
+    }
+
+    func testTabIntoAnEmptyListKeepsSelectionEmpty() throws {
+        let window = makeWindow(store: HistoryStore(fileURL: nil))
+        defer { window.close() }
+        let list = try XCTUnwrap(descendants(of: NSTableView.self, in: window.contentView!).first)
+        sendKey("\t", code: 48, to: window)
+        XCTAssertTrue(window.firstResponder === list)
+        XCTAssertEqual(list.selectedRow, -1)
+    }
+
     func testDismissSavedResponseReturnsToHistoryWithSearchAndSelection() throws {
         let store = HistoryStore(fileURL: nil)
         store.record(PromptRequest(prompt: "Translate", input: "Hola"), response: "Hello")

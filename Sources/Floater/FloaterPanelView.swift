@@ -415,10 +415,7 @@ struct FloaterPanelView: View {
     }
 
     private func newRequest() {
-        contentState.prompt = ""
-        contentState.input = ""
-        contentState.title = nil
-        contentState.isPromptExpanded = false
+        contentState.clear()
         viewModel.showComposer()
         focusedControl = .prompt
         onNew()
@@ -440,10 +437,14 @@ struct FloaterPanelView: View {
         contentState.input = request.input
         contentState.title = request.title
         contentState.isPromptExpanded = false
-        viewModel.showComposer()
+        viewModel.beginEditing()
     }
 
     private func dismissComposer() {
+        if viewModel.cancelEditing() {
+            onContentChange()
+            return
+        }
         contentState.title = nil
         onDismiss()
     }

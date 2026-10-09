@@ -24,6 +24,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         let request: PromptRequest?
         let response: String
         let errorMessage: String?
+        let editingResponse: FloaterViewModel.ResponseState?
         let prompt: String
         let input: String
         let title: String?
@@ -65,10 +66,17 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     }
 
     func dismiss() {
+        if !navigation.isShowingHistory, viewModel.cancelEditing() {
+            fitPanelToContent()
+            return
+        }
         if navigation.isShowingHistory, historyReturnsToPanel {
             rememberHistoryFocus()
             if let state = historyReturnState {
-                viewModel.restore(request: state.request, response: state.response, errorMessage: state.errorMessage)
+                viewModel.restore(
+                    request: state.request, response: state.response, errorMessage: state.errorMessage,
+                    editingResponse: state.editingResponse
+                )
                 contentState.prompt = state.prompt
                 contentState.input = state.input
                 contentState.title = state.title
@@ -117,6 +125,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         if historyReturnsToPanel, !responseOpenedFromHistory {
             historyReturnState = HistoryReturnState(
                 request: viewModel.currentRequest, response: viewModel.response, errorMessage: viewModel.errorMessage,
+                editingResponse: viewModel.editingResponse,
                 prompt: contentState.prompt, input: contentState.input, title: contentState.title,
                 isPromptExpanded: contentState.isPromptExpanded
             )
