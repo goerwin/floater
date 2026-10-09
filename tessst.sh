@@ -19,7 +19,7 @@ INPUT="Done. Committed 32cd5629b9 (fix(antares): enable tab navigation for neste
 Posted both replies as egaitan-godaddy: [Save button thread](https://github.com/godaddy/antares/pull/346#discussion_r4225352724) and [Switch and DNS link thread](https://github.com/godaddy/antares/pull/346#discussion_r4225353100). Copilot had resolved both threads after the push; I replied as requested.
 "
 
-make dev \
+make dev-app \
   FLOATER_PROMPT="$PROMPT" \
   FLOATER_TITLE="$TITLE" \
   FLOATER_INPUT="$INPUT"
