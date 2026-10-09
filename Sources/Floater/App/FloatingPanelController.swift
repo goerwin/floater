@@ -21,6 +21,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     private var resizeScheduled = false
     private var historyFocusNeedsRestore = false
     private var isReplacing = false
+    private var didBecomeActiveObserver: NSObjectProtocol?
 
     init(
         state: FloaterState, historyStore: HistoryStore = HistoryStore(fileURL: nil),
@@ -53,6 +54,19 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         self.replaceText = replaceText
     }
 
+    private func ensureActiveObserver() {
+        guard didBecomeActiveObserver == nil else { return }
+        didBecomeActiveObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.claimKeyIfVisible()
+            }
+        }
+    }
+
     func show(previousApplication: NSRunningApplication?, preservingReplacementTarget: Bool = false) {
         state.showRequest()
         rememberTarget(in: previousApplication, preservingReplacementTarget: preservingReplacementTarget)
@@ -72,6 +86,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
 
     private func showPanel() {
         accessibility.refresh()
+        ensureActiveObserver()
 
         let panel = panel ?? makePanel()
         fitPanelToContent()
@@ -82,6 +97,18 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         NSApp.activate()
         panel.makeKeyAndOrderFront(nil)
         panel.orderFrontRegardless()
+        // Activation is asynchronous when Floater was in the background, so the
+        // make-key above can land before the app is active and never take effect.
+        // didBecomeActive re-asserts it once activation completes.
+        claimKeyIfVisible()
+    }
+
+    private func claimKeyIfVisible() {
+        guard let panel, panel.isVisible else { return }
+        panel.makeKeyAndOrderFront(nil)
+        if let initialFirstResponder = panel.initialFirstResponder {
+            panel.makeFirstResponder(initialFirstResponder)
+        }
     }
 
     func dismiss() {
