@@ -4,6 +4,7 @@ import SwiftUI
 @main
 struct FloaterApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @StateObject private var updateChecker = UpdateChecker()
 
     var body: some Scene {
         MenuBarExtra("Floater", systemImage: FloaterSymbol.name) {
@@ -28,6 +29,11 @@ struct FloaterApp: App {
             AccessibilityMenu(accessibility: appDelegate.accessibility)
 
             Divider()
+
+            Button("Check for Updates...") {
+                updateChecker.checkForUpdates()
+            }
+            .disabled(updateChecker.isChecking)
 
             Button(quitLabel) {
                 NSApp.terminate(nil)
