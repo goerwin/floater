@@ -63,7 +63,7 @@ find_development_identity() {
         | grep 'Apple Development' \
         | grep -v 'CSSMERR_TP_CERT_REVOKED' \
         | head -n 1 \
-        | awk '{print $2}'
+        | awk '{print $2}' || true
 }
 
 if [[ "$FLOATER_BUILD_CONFIGURATION" != debug && -n "${CODE_SIGNING_IDENTITY:-}" ]]; then

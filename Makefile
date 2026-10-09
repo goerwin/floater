@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-VERSION ?= 0.1.0
+VERSION ?= 0.0.0
 CONFIGURATION ?= release
 BUILD_DIR ?= build
 DIST_DIR ?= dist
