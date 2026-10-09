@@ -65,32 +65,32 @@ final class CaptureRoutingTests: XCTestCase {
         )
     }
 
-    func testLineExpansionRunsOnlyForBlankCaretInText() {
-        XCTAssertTrue(LineExpansion.shouldExpand(
+    func testSelectAllExpansionRunsOnlyForBlankCaretInText() {
+        XCTAssertTrue(SelectAllExpansion.shouldExpand(
             elementFound: true, isSecure: false, role: "AXTextArea",
             selectedText: nil, selectionUnreadable: false
         ))
-        XCTAssertTrue(LineExpansion.shouldExpand(
+        XCTAssertTrue(SelectAllExpansion.shouldExpand(
             elementFound: true, isSecure: false, role: "AXTextField",
             selectedText: "  ", selectionUnreadable: false
         ))
-        XCTAssertFalse(LineExpansion.shouldExpand(
+        XCTAssertFalse(SelectAllExpansion.shouldExpand(
             elementFound: true, isSecure: false, role: "AXTextArea",
             selectedText: "hi", selectionUnreadable: false
         ))
-        XCTAssertFalse(LineExpansion.shouldExpand(
+        XCTAssertFalse(SelectAllExpansion.shouldExpand(
             elementFound: true, isSecure: false, role: "AXTextArea",
             selectedText: nil, selectionUnreadable: true
         ))
-        XCTAssertFalse(LineExpansion.shouldExpand(
+        XCTAssertFalse(SelectAllExpansion.shouldExpand(
             elementFound: true, isSecure: true, role: "AXTextArea",
             selectedText: nil, selectionUnreadable: false
         ))
-        XCTAssertFalse(LineExpansion.shouldExpand(
+        XCTAssertFalse(SelectAllExpansion.shouldExpand(
             elementFound: true, isSecure: false, role: "AXButton",
             selectedText: nil, selectionUnreadable: false
         ))
-        XCTAssertFalse(LineExpansion.shouldExpand(
+        XCTAssertFalse(SelectAllExpansion.shouldExpand(
             elementFound: false, isSecure: false, role: "AXTextArea",
             selectedText: nil, selectionUnreadable: false
         ))

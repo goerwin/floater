@@ -99,7 +99,7 @@ public enum FieldRead: Equatable, Sendable {
     case field(String)
 }
 
-public enum LineExpansion {
+public enum SelectAllExpansion {
     public static func shouldExpand(
         elementFound: Bool,
         isSecure: Bool,

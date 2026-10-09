@@ -121,8 +121,8 @@ enum BackgroundTextReplacer {
         )
     }
 
-    static func selectLine(in application: NSRunningApplication) async -> String? {
-        guard sendLineKeys(to: application) else { return nil }
+    static func selectAllText(in application: NSRunningApplication) async -> String? {
+        guard sendSelectAllKeys(to: application) else { return nil }
         for _ in 0..<20 {
             try? await Task.sleep(for: .milliseconds(50))
             guard !application.isTerminated else { return nil }
@@ -134,11 +134,10 @@ enum BackgroundTextReplacer {
         return nil
     }
 
-    private static func sendLineKeys(to application: NSRunningApplication) -> Bool {
+    private static func sendSelectAllKeys(to application: NSRunningApplication) -> Bool {
         guard let source = CGEventSource(stateID: .privateState) else { return false }
         let strokes: [(CGKeyCode, CGEventFlags)] = [
-            (CGKeyCode(kVK_LeftArrow), .maskCommand),
-            (CGKeyCode(kVK_RightArrow), [.maskCommand, .maskShift]),
+            (CGKeyCode(kVK_ANSI_A), .maskCommand),
         ]
         for (key, flags) in strokes {
             guard let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
