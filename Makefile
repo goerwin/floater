@@ -52,13 +52,15 @@ assets:
 	python3 Scripts/generate-assets.py
 
 build:
-	FLOATER_VERSION="$(VERSION)" Scripts/build-app.sh "$(CONFIGURATION)"
+	FLOATER_VERSION="$(VERSION)" CODE_SIGNING_IDENTITY="$(CODE_SIGNING_IDENTITY)" Scripts/build-app.sh "$(CONFIGURATION)"
 
 dev-app:
 	bash Scripts/dev.sh
 
 install:
-	FLOATER_VERSION="$(VERSION)" Scripts/build-app.sh release
+	FLOATER_VERSION="$(VERSION)" CODE_SIGNING_IDENTITY="$(CODE_SIGNING_IDENTITY)" Scripts/build-app.sh release
+	@/usr/bin/killall -TERM Floater >/dev/null 2>&1 || true
+	sudo rm -rf "/Applications/Floater.app"
 	sudo ditto "$(APP_BUNDLE)" "/Applications/Floater.app"
 	@printf 'Installed Floater.app to /Applications/Floater.app\n'
 

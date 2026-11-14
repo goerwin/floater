@@ -12,6 +12,7 @@ if [[ ! -x "$FLOATER_SOURCE_APP/Contents/MacOS/Floater" ]]; then
 fi
 
 mkdir -p "$FLOATER_APPLICATIONS_DIR" "$FLOATER_BIN_DIR"
+/usr/bin/killall -TERM Floater >/dev/null 2>&1 || true
 rm -rf "$FLOATER_APP_BUNDLE"
 ditto "$FLOATER_SOURCE_APP" "$FLOATER_APP_BUNDLE"
 ln -sfn "$FLOATER_APP_BUNDLE/Contents/MacOS/floater-cli" "$FLOATER_BIN_DIR/floater"

@@ -58,12 +58,26 @@ cp "$FLOATER_ROOT_DIR/Resources/Generated/Floater.icns" "$FLOATER_APP_BUNDLE/Con
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $FLOATER_VERSION" "$FLOATER_APP_BUNDLE/Contents/Info.plist"
 printf 'APPL????' > "$FLOATER_APP_BUNDLE/Contents/PkgInfo"
 
-find_development_identity() {
+find_development_identities() {
     security find-identity -v -p codesigning 2>/dev/null \
         | grep 'Apple Development' \
         | grep -v 'CSSMERR_TP_CERT_REVOKED' \
-        | head -n 1 \
         | awk '{print $2}' || true
+}
+
+verify_signing_certificate() {
+    local certificate_dir result=0
+    certificate_dir="$(mktemp -d "${TMPDIR:-/tmp}/floater-signing.XXXXXX")" || return
+    (
+        cd "$certificate_dir" || exit
+        /usr/bin/codesign --display --extract-certificates "$FLOATER_APP_BUNDLE" >/dev/null 2>&1
+    ) && [[ -f "$certificate_dir/codesign0" ]] \
+        && /usr/bin/security verify-cert -p codeSign -R ocsp -q -c "$certificate_dir/codesign0" || result=$?
+    rm -rf "$certificate_dir"
+    if [[ "$result" -ne 0 ]]; then
+        printf 'Signing certificate is unavailable or not trusted.\n' >&2
+    fi
+    return "$result"
 }
 
 if [[ "$FLOATER_BUILD_CONFIGURATION" != debug && -n "${CODE_SIGNING_IDENTITY:-}" ]]; then
@@ -74,17 +88,33 @@ if [[ "$FLOATER_BUILD_CONFIGURATION" != debug && -n "${CODE_SIGNING_IDENTITY:-}"
     /usr/bin/codesign --force --options runtime --timestamp --sign "$CODE_SIGNING_IDENTITY" "$FLOATER_APP_BUNDLE/Contents/Frameworks/Sparkle.framework"
     /usr/bin/codesign --force --options runtime --timestamp --sign "$CODE_SIGNING_IDENTITY" "$FLOATER_APP_BUNDLE/Contents/MacOS/floater-cli"
     /usr/bin/codesign --force --options runtime --timestamp --sign "$CODE_SIGNING_IDENTITY" "$FLOATER_APP_BUNDLE"
-    /usr/bin/codesign --verify --deep --strict --verbose=2 "$FLOATER_APP_BUNDLE"
+    verify_signing_certificate
 else
     # Ad-hoc signatures change with every build, which drops the app's
     # Accessibility permission. A stable development identity keeps it.
-    FLOATER_DEV_SIGNING_IDENTITY="${CODE_SIGNING_IDENTITY:-$(find_development_identity)}"
-    if [[ -n "$FLOATER_DEV_SIGNING_IDENTITY" ]]; then
+    FLOATER_DEV_SIGNING_IDENTITY="${CODE_SIGNING_IDENTITY:-}"
+    if [[ -z "$FLOATER_DEV_SIGNING_IDENTITY" ]]; then
+        while IFS= read -r identity; do
+            # The keychain identity list can miss recently revoked certificates.
+            /usr/bin/codesign --force --sign "$identity" "$FLOATER_APP_BUNDLE"
+            if verify_signing_certificate; then
+                FLOATER_DEV_SIGNING_IDENTITY="$identity"
+                break
+            fi
+            printf 'Skipping untrusted development identity %s\n' "$identity" >&2
+        done < <(find_development_identities)
+    else
         /usr/bin/codesign --force --sign "$FLOATER_DEV_SIGNING_IDENTITY" "$FLOATER_APP_BUNDLE"
+        verify_signing_certificate
+    fi
+
+    if [[ -n "$FLOATER_DEV_SIGNING_IDENTITY" ]]; then
         printf 'Signed with development identity %s\n' "$FLOATER_DEV_SIGNING_IDENTITY"
     else
         /usr/bin/codesign --force --sign - "$FLOATER_APP_BUNDLE"
+        printf 'No trusted development identity found; signed for local use.\n'
     fi
 fi
 
+/usr/bin/codesign --verify --deep --strict --verbose=2 "$FLOATER_APP_BUNDLE"
 printf 'Built %s\n' "$FLOATER_APP_BUNDLE"

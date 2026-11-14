@@ -26,6 +26,8 @@ make dev-app
 
 Use **New** to start a request, **Open** to return to the current window, and **History** to browse saved results.
 
+Local builds use a trusted Apple Development certificate when available and otherwise use ad-hoc signing. The build checks certificate revocation because macOS can move apps signed with a revoked certificate to the Trash. To keep Accessibility permission across rebuilds, create a new Apple Development certificate in Xcode if your old one was revoked.
+
 ## Automation
 
 Install the app and CLI with `Scripts/install-cli.sh`. Add `~/.local/bin` to your `PATH`, then send a request:
