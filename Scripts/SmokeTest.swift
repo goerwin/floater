@@ -62,9 +62,12 @@ private final class AppSmokeTest {
         try menu("New")
         try wait("New menu action") { self.element("prompt") != nil }
         try wait("New request takes keyboard focus") {
-            NSWorkspace.shared.frontmostApplication?.processIdentifier == self.application?.processIdentifier
+            self.element("prompt").map { self.attribute($0, kAXFocusedAttribute) as? Bool == true } == true
         }
         try set(try require(element("prompt"), "Prompt missing"), value: "Smoke draft")
+        try wait("draft enables Run") {
+            self.element("run").map { self.attribute($0, kAXEnabledAttribute) as? Bool == true } == true
+        }
         try press(try require(element("dismiss"), "Dismiss missing"))
         try wait("dismiss") { self.windows.isEmpty }
         try menu("Open")
@@ -86,7 +89,7 @@ private final class AppSmokeTest {
         }
         if let response = element("responseText") {
             try wait("result takes keyboard focus") {
-                NSWorkspace.shared.frontmostApplication?.processIdentifier == self.application?.processIdentifier
+                self.descendants(self.root).contains { self.attribute($0, kAXFocusedAttribute) as? Bool == true }
             }
             let text = try require(descendants(response).first {
                 string($0, kAXRoleAttribute) == kAXStaticTextRole && !string($0, kAXValueAttribute).isEmpty
@@ -226,7 +229,10 @@ private final class AppSmokeTest {
     }
 
     func set(_ element: AXUIElement, value: String) throws {
-        try check(AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, value as CFString) == .success, "Cannot edit text")
+        var range = CFRange(location: 0, length: (string(element, kAXValueAttribute) as NSString).length)
+        let selection = try require(AXValueCreate(.cfRange, &range), "Cannot create text selection")
+        try check(AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, selection) == .success, "Cannot select text")
+        try check(AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, value as CFString) == .success, "Cannot edit text")
     }
 
     func drag(from start: CGPoint, by offset: CGVector) throws {

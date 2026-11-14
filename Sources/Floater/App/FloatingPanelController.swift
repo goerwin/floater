@@ -155,13 +155,13 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     }
 
     func copyAndDismiss() {
-        guard !state.response.isEmpty else { return }
+        guard state.canUseResponse else { return }
         writeToPasteboard(state.response)
         closeAndRestoreApplication()
     }
 
     func replaceAndDismiss() {
-        guard !isReplacing, !state.response.isEmpty,
+        guard !isReplacing, state.canUseResponse,
               let application = previousApplication,
               !application.isTerminated else { return }
         state.setActionError(nil)

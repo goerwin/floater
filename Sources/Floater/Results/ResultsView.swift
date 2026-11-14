@@ -60,15 +60,23 @@ struct ResultsView: View {
             .frame(height: height)
         } else {
             ScrollView {
-                Text(displayedText)
+                responseText
                     .font(.system(size: 13))
                     .foregroundStyle(state.errorMessage == nil ? Color.primary : Color.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
                     .padding(.vertical, 2)
             }
             .frame(height: height)
             .accessibilityIdentifier("responseText")
+        }
+    }
+
+    @ViewBuilder
+    private var responseText: some View {
+        if state.canUseResponse {
+            Text(displayedText).textSelection(.enabled)
+        } else {
+            Text(displayedText).textSelection(.disabled)
         }
     }
 
@@ -125,7 +133,7 @@ struct ResultsView: View {
     private var actionBar: some View {
         HStack(spacing: 10) {
             Spacer()
-            PanelButton("Copy", control: .copy, focus: $focusedControl, action: onCopy)
+            PanelButton("Copy", control: .copy, focus: $focusedControl, isEnabled: state.canUseResponse, action: onCopy)
                 .help("Copy the response (Command+C)")
             PanelButton("Edit", control: .edit, focus: $focusedControl, action: state.beginEditing)
                 .help("Edit the prompt and run it again (Command+E)")

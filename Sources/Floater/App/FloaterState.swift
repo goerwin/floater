@@ -16,6 +16,7 @@ final class FloaterState: ObservableObject {
     @Published private(set) var currentRequest: PromptRequest?
     @Published private(set) var response = ""
     @Published private(set) var isGenerating = false
+    @Published private var hasCompletedResponse = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var actionErrorMessage: String?
     @Published private(set) var canReplace = false
@@ -23,6 +24,7 @@ final class FloaterState: ObservableObject {
     private struct ResultState {
         let request: PromptRequest?
         let response: String
+        let hasCompletedResponse: Bool
         let errorMessage: String?
         let actionErrorMessage: String?
     }
@@ -49,6 +51,9 @@ final class FloaterState: ObservableObject {
     private var activeGenerationID: UUID?
 
     var canSubmit: Bool { !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    var canUseResponse: Bool {
+        hasCompletedResponse && errorMessage == nil && !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     var windowTitle: String {
         if screen == .history { return "History" }
@@ -57,7 +62,10 @@ final class FloaterState: ObservableObject {
     }
 
     private var resultState: ResultState {
-        ResultState(request: currentRequest, response: response, errorMessage: errorMessage, actionErrorMessage: actionErrorMessage)
+        ResultState(
+            request: currentRequest, response: response, hasCompletedResponse: hasCompletedResponse,
+            errorMessage: errorMessage, actionErrorMessage: actionErrorMessage
+        )
     }
 
     init(provider: any AIProvider, historyStore: HistoryStore? = nil) {
@@ -169,9 +177,12 @@ final class FloaterState: ObservableObject {
                 }
                 guard let self, self.activeGenerationID == generationID, !Task.isCancelled else { return }
                 self.isGenerating = false
+                self.hasCompletedResponse = true
                 self.historyStore?.record(request, response: self.response)
             } catch is CancellationError {
-                return
+                guard let self, self.activeGenerationID == generationID else { return }
+                self.isGenerating = false
+                self.response = ""
             } catch {
                 guard let self, self.activeGenerationID == generationID, !Task.isCancelled else { return }
                 self.isGenerating = false
@@ -185,13 +196,17 @@ final class FloaterState: ObservableObject {
     }
 
     func restore(request: PromptRequest?, response: String, errorMessage: String? = nil) {
-        restore(ResultState(request: request, response: response, errorMessage: errorMessage, actionErrorMessage: nil))
+        restore(ResultState(
+            request: request, response: response, hasCompletedResponse: true,
+            errorMessage: errorMessage, actionErrorMessage: nil
+        ))
     }
 
     private func restore(_ result: ResultState) {
         clearResult()
         currentRequest = result.request
         response = result.response
+        hasCompletedResponse = result.hasCompletedResponse
         errorMessage = result.errorMessage
         actionErrorMessage = result.actionErrorMessage
         screen = currentRequest == nil ? .newRequest : .results
@@ -204,6 +219,7 @@ final class FloaterState: ObservableObject {
         currentRequest = nil
         response = ""
         isGenerating = false
+        hasCompletedResponse = false
         errorMessage = nil
         actionErrorMessage = nil
         editingResult = nil

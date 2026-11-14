@@ -11,8 +11,8 @@ Requires macOS 26 or later and a Mac with Apple Intelligence enabled and ready.
 ## Features
 
 - **Floating window:** stays above other apps and can be dragged anywhere.
-- **New Request:** write a prompt with optional input text.
-- **Results:** copy the full response or a selection, edit your request, and run it again.
+- **New Request:** write instructions with an optional prompt containing the text to process.
+- **Results:** preview the response as it streams. Once generation succeeds, copy the full response or a selection, or use Replace. Edit your request to run it again.
 - **Replace:** paste over selected text in the previous app, or the whole field when nothing is selected. Keeps the result on your clipboard. Requires Accessibility permission.
 - **History:** search and reopen the latest 100 successful results, saved locally.
 - **Updates:** use **Check for Updates...** in the menu to download and install new versions.
@@ -42,14 +42,14 @@ Use `--input -` to read the input from standard input. Repeat `--ignore` with a 
 
 ```sh
 floater --prompt "Rewrite this for clarity" --title "Fix Grammar" \
-  --ignore com.runningwithcrayons.Alfred --capture-input
+  --ignore com.example.launcher --capture-input
 ```
 
 You can also open a request from another app or workflow. Repeat `ignore` for each bundle id, and set `capture=1` to read the field:
 
 ```text
 floater://prompt?prompt=Translate%20to%20Spanish&input=Hello%2C%20world
-floater://prompt?prompt=Rewrite%20this&ignore=com.runningwithcrayons.Alfred&capture=1
+floater://prompt?prompt=Rewrite%20this&ignore=com.example.launcher&capture=1
 ```
 
 ## Releases

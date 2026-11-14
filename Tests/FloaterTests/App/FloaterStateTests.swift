@@ -14,18 +14,21 @@ final class FloaterStateTests: XCTestCase {
         model.start(request)
         await waitUntil { provider.pending["First"] != nil }
         XCTAssertEqual(model.response, "Partial response")
+        XCTAssertFalse(model.canUseResponse)
         XCTAssertTrue(store.entries.isEmpty)
         provider.complete("First", response: "Final response")
         await waitUntil { !model.isGenerating }
         let entry = try XCTUnwrap(store.entries.first)
         XCTAssertEqual(entry.request, request)
         XCTAssertEqual(entry.response, "Final response")
+        XCTAssertTrue(model.canUseResponse)
 
         model.showNewRequest()
         model.restore(entry)
         XCTAssertEqual(model.currentRequest, request)
         XCTAssertEqual(model.response, "Final response")
         XCTAssertFalse(model.isGenerating)
+        XCTAssertTrue(model.canUseResponse)
         XCTAssertNil(model.errorMessage)
         XCTAssertEqual(provider.callCount, 1)
         XCTAssertEqual(store.entries.count, 1)
@@ -51,7 +54,87 @@ final class FloaterStateTests: XCTestCase {
         provider.fail("Failure")
         await waitUntil { !model.isGenerating }
         XCTAssertNotNil(model.errorMessage)
+        XCTAssertFalse(model.canUseResponse)
         XCTAssertEqual(store.entries.count, 1)
+    }
+
+    func testPartialResponseCannotBeCopiedOrReplacedWhileStreamingOrAfterFailure() async throws {
+        let provider = ControlledProvider()
+        let model = FloaterState(provider: provider)
+        model.setCanReplace(true)
+        model.start(PromptRequest(prompt: "Failure"))
+        await waitUntil { provider.pending["Failure"] != nil }
+        var copies = 0
+        var replacements = 0
+        let window = makeWindow(state: model, onCopy: { copies += 1 }, onReplace: { replacements += 1 })
+        defer { window.close() }
+        let copy = try XCTUnwrap(buttons(in: window.contentView!).first { $0.accessibilityLabel() == "Copy" })
+        let replace = try XCTUnwrap(buttons(in: window.contentView!).first { $0.accessibilityLabel() == "Replace" })
+        XCTAssertFalse(copy.isEnabled)
+        XCTAssertFalse(replace.isEnabled)
+        sendKey("c", code: 8, modifiers: .command, to: window)
+        sendKey("r", code: 15, modifiers: [.command, .shift], to: window)
+        XCTAssertEqual(copies, 0)
+        XCTAssertEqual(replacements, 0)
+
+        provider.fail("Failure")
+        await waitUntil { !model.isGenerating }
+        settle(window)
+        XCTAssertFalse(copy.isEnabled)
+        XCTAssertFalse(replace.isEnabled)
+        sendKey("c", code: 8, modifiers: .command, to: window)
+        sendKey("r", code: 15, modifiers: [.command, .shift], to: window)
+        XCTAssertEqual(copies, 0)
+        XCTAssertEqual(replacements, 0)
+
+        model.start(PromptRequest(prompt: "Success"))
+        await waitUntil { provider.pending["Success"] != nil }
+        provider.complete("Success", response: "Complete result")
+        await waitUntil { model.canUseResponse }
+        settle(window)
+        XCTAssertTrue(copy.isEnabled)
+        XCTAssertTrue(replace.isEnabled)
+        sendKey("c", code: 8, modifiers: .command, to: window)
+        sendKey("r", code: 15, modifiers: [.command, .shift], to: window)
+        XCTAssertEqual(copies, 1)
+        XCTAssertEqual(replacements, 1)
+    }
+
+    func testCancellingAnEditCannotTurnAnInterruptedPreviewIntoACompletedResult() async {
+        let provider = ControlledProvider()
+        let store = HistoryStore(fileURL: nil)
+        let model = FloaterState(provider: provider, historyStore: store)
+        model.start(PromptRequest(prompt: "Interrupted"))
+        await waitUntil { provider.pending["Interrupted"] != nil }
+        model.beginEditing()
+        XCTAssertTrue(model.cancelEditing())
+        XCTAssertEqual(model.response, "Partial response")
+        XCTAssertFalse(model.isGenerating)
+        XCTAssertFalse(model.canUseResponse)
+        provider.complete("Interrupted", response: "Late result")
+        await waitUntil { provider.completedCount == 1 }
+        XCTAssertFalse(model.canUseResponse)
+        XCTAssertTrue(store.entries.isEmpty)
+    }
+
+    func testCancelledAndEmptyResponsesAreNotActionableOrSaved() async {
+        let provider = ControlledProvider()
+        let store = HistoryStore(fileURL: nil)
+        let model = FloaterState(provider: provider, historyStore: store)
+        model.start(PromptRequest(prompt: "Cancelled"))
+        await waitUntil { provider.pending["Cancelled"] != nil }
+        provider.pending.removeValue(forKey: "Cancelled")?.resume(throwing: CancellationError())
+        await waitUntil { !model.isGenerating }
+        XCTAssertTrue(model.response.isEmpty)
+        XCTAssertFalse(model.canUseResponse)
+        XCTAssertTrue(store.entries.isEmpty)
+
+        model.start(PromptRequest(prompt: "Empty"))
+        await waitUntil { provider.pending["Empty"] != nil }
+        provider.complete("Empty", response: " \n\t")
+        await waitUntil { !model.isGenerating }
+        XCTAssertFalse(model.canUseResponse)
+        XCTAssertTrue(store.entries.isEmpty)
     }
 
     func testRestoringHistoryCancelsActiveGeneration() async {

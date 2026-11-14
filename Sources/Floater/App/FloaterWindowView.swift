@@ -15,7 +15,7 @@ struct FloaterWindowView: View {
     @State private var focusedControl: PanelControl?
 
     private var canReplace: Bool {
-        !state.response.isEmpty && state.canReplace && accessibility.isGranted
+        state.canUseResponse && state.canReplace && accessibility.isGranted
     }
 
     var body: some View {
@@ -100,7 +100,7 @@ struct FloaterWindowView: View {
 
     private func focusRequest() {
         guard state.screen != .history else { return }
-        focusedControl = state.screen == .newRequest ? .prompt : .copy
+        focusedControl = state.screen == .newRequest ? .prompt : (state.canUseResponse ? .copy : .edit)
     }
 
     private func newRequest() {
@@ -151,6 +151,7 @@ struct FloaterWindowView: View {
         guard state.screen == .results, modifiers == .command else { return false }
         switch event.charactersIgnoringModifiers?.lowercased() {
         case "c":
+            guard state.canUseResponse else { return true }
             let action = #selector(NSText.copy(_:))
             let item = NSMenuItem(title: "Copy", action: action, keyEquivalent: "c")
             if let target = NSApp.target(forAction: action, to: nil, from: nil),
@@ -174,7 +175,7 @@ struct FloaterWindowView: View {
         if state.screen == .newRequest {
             controls = [.prompt, .input, .dismiss] + (state.canSubmit ? [.run] : []) + [.history, .new]
         } else {
-            controls = [.copy, .edit]
+            controls = (state.canUseResponse ? [.copy, .edit] : [.edit])
                 + (canReplace ? [.replace] : [])
                 + [.dismiss, .history, .new]
         }

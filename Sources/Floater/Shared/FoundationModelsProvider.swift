@@ -24,9 +24,13 @@ final class FoundationModelsProvider: AIProvider {
             ? request.prompt
             : "\(request.prompt)\n\n<transcript>\n\(request.input)\n</transcript>"
 
-        for try await snapshot in session.streamResponse(to: prompt) {
-            try Task.checkCancellation()
-            onUpdate(snapshot.content)
+        do {
+            for try await snapshot in session.streamResponse(to: prompt) {
+                try Task.checkCancellation()
+                onUpdate(snapshot.content)
+            }
+        } catch LanguageModelSession.GenerationError.exceededContextWindowSize {
+            throw ProviderError.inputTooLong
         }
     }
 
@@ -51,10 +55,12 @@ final class FoundationModelsProvider: AIProvider {
 
 private enum ProviderError: LocalizedError {
     case unavailable(String)
+    case inputTooLong
 
     var errorDescription: String? {
         switch self {
         case .unavailable(let message): message
+        case .inputTooLong: "This request is too long for Apple Intelligence. Shorten the prompt or input and try again."
         }
     }
 }

@@ -14,13 +14,13 @@ struct NewRequestView: View {
         VStack(alignment: .leading, spacing: 8) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
-                    fieldLabel("Prompt")
+                    fieldLabel("Instructions")
 
-                    editor(text: $prompt, placeholder: "What should Floater do?", label: "Prompt", control: .prompt)
+                    editor(text: $prompt, placeholder: "What should Floater do?", label: "Instructions", control: .prompt)
 
-                    fieldLabel("Optional input")
+                    fieldLabel("Prompt (optional)")
 
-                    editor(text: $input, placeholder: "Add input (optional)", label: "Optional input", control: .input)
+                    editor(text: $input, placeholder: "Add text to process (optional)", label: "Prompt (optional)", control: .input)
                 }
                 .padding(1)
                 .fixedSize(horizontal: false, vertical: true)
