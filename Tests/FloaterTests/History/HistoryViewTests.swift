@@ -9,6 +9,42 @@ final class HistoryViewTests: XCTestCase {
     private var controller: FloatingPanelController?
     private var model: FloaterState?
 
+    func testMultilineHistoryRowsKeepTextCenteredAndDateVisible() throws {
+        let store = HistoryStore(fileURL: nil)
+        let longText = String(repeating: "A long line of text ", count: 30)
+        for title in [nil, "Custom\n\r\nmultiline\u{2028}title\t\(longText)"] as [String?] {
+            store.record(
+                PromptRequest(prompt: "First line\n\nSecond line\r\n\(longText)", title: title),
+                response: "Preview\r\n\nwith\twhitespace\u{2028}\(longText)"
+            )
+        }
+        let window = makeWindow(store: store)
+        defer { controller?.hide() }
+        let table = try XCTUnwrap(descendants(of: NSTableView.self, in: window.contentView!).first)
+        for index in store.entries.indices {
+            let row = try XCTUnwrap(table.view(atColumn: 0, row: index, makeIfNecessary: true) as? HistoryList.RowView)
+            row.layoutSubtreeIfNeeded()
+            let title = row.title.convert(row.title.bounds, to: row)
+            let date = row.date.convert(row.date.bounds, to: row)
+            let preview = row.preview.convert(row.preview.bounds, to: row)
+            for field in [row.title, row.date, row.preview] {
+                XCTAssertFalse(field.stringValue.contains(where: { $0.isWhitespace && $0 != " " }))
+                XCTAssertLessThan(field.frame.height, 20)
+                XCTAssertTrue(row.bounds.contains(field.convert(field.bounds, to: row)))
+            }
+            let textBounds = title.union(preview)
+            XCTAssertEqual(textBounds.midY, row.bounds.midY, accuracy: 1)
+            XCTAssertLessThanOrEqual(title.maxX, date.minX)
+            XCTAssertGreaterThanOrEqual(date.width, row.date.intrinsicContentSize.width - 1)
+            XCTAssertGreaterThanOrEqual(preview.width, title.width)
+        }
+        window.makeFirstResponder(table)
+        table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+        sendKey("\r", code: 36, to: window)
+        XCTAssertEqual(model?.currentRequest, store.entries[0].request)
+        XCTAssertEqual(model?.response, store.entries[0].response)
+    }
+
     func testTabIntoListSelectsAnEdgeRowInTheTraversalDirection() throws {
         for modifiers: NSEvent.ModifierFlags in [[], .option, .shift, [.option, .shift]] {
             let store = HistoryStore(fileURL: nil)
@@ -65,7 +101,7 @@ final class HistoryViewTests: XCTestCase {
         XCTAssertEqual(list.selectedRow, -1)
     }
 
-    func testDismissSavedResponseReturnsToHistoryWithSearchAndSelection() throws {
+    func testDismissSavedChatHidesAndHistoryKeepsSearchAndSelection() throws {
         let store = HistoryStore(fileURL: nil)
         store.record(PromptRequest(prompt: "Translate\n\nHola"), response: "Hello")
         store.record(PromptRequest(prompt: "Other"), response: "Other result")
@@ -89,6 +125,9 @@ final class HistoryViewTests: XCTestCase {
             charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36
         )!
         if !window.performKeyEquivalent(with: enter) { window.sendEvent(enter) }
+        settle(window)
+        XCTAssertFalse(window.isVisible)
+        controller?.showHistory()
         settle(window)
         XCTAssertTrue(controller?.isShowingHistory ?? false)
         XCTAssertTrue(window.isVisible)
@@ -136,6 +175,9 @@ final class HistoryViewTests: XCTestCase {
         sendKey("\r", code: 36, to: window)
         XCTAssertFalse(controller?.isShowingHistory ?? true)
         sendKey("\u{1b}", code: 53, to: window)
+        XCTAssertFalse(window.isVisible)
+        controller?.showHistory()
+        settle(window)
         XCTAssertTrue(controller?.isShowingHistory ?? false)
         XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, "historyOpen")
     }
@@ -288,7 +330,7 @@ final class HistoryViewTests: XCTestCase {
 
 @MainActor
 private struct HistoryTestProvider: AIProvider {
-    func generate(_ request: PromptRequest, onUpdate: @MainActor (String) -> Void) async throws {
+    func generate(messages: [ChatMessage], onUpdate: @MainActor (String) -> Void) async throws {
         XCTFail("Opening history must not generate a response")
     }
 }

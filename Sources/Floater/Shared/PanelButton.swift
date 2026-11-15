@@ -7,6 +7,7 @@ struct PanelButton: View {
     var keyHint: String?
     var isEnabled = true
     var isPrimary = false
+    var systemImage: String?
     var isFocused = false
     var prefersInitialFocus = false
     var identifier: String?
@@ -48,12 +49,17 @@ struct PanelButton: View {
         func updateNSView(_ button: ActionButton, context: Context) {
             button.isEnabled = configuration.isEnabled && context.environment.isEnabled
             button.controlSize = .regular
+            button.bezelStyle = configuration.systemImage == nil ? .rounded : .circular
+            button.image = configuration.systemImage.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
+            button.imagePosition = configuration.systemImage == nil ? .noImage : .imageOnly
+            button.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
+            button.contentTintColor = configuration.isPrimary && button.isEnabled ? .alternateSelectedControlTextColor : nil
             let font = NSFont.systemFont(ofSize: NSFont.systemFontSize(for: button.controlSize))
             button.font = font
             let textColor: NSColor = button.isEnabled
                 ? (configuration.isPrimary ? .alternateSelectedControlTextColor : .controlTextColor)
                 : .disabledControlTextColor
-            let label = NSMutableAttributedString(string: configuration.title, attributes: [.font: font, .foregroundColor: textColor])
+            let label = NSMutableAttributedString(string: configuration.systemImage == nil ? configuration.title : "", attributes: [.font: font, .foregroundColor: textColor])
             if let hint = configuration.shortcut?.label ?? configuration.keyHint {
                 let color: NSColor = button.isEnabled
                     ? (configuration.isPrimary ? textColor.withAlphaComponent(0.5) : .tertiaryLabelColor)
@@ -79,7 +85,7 @@ struct PanelButton: View {
         }
 
         func sizeThatFits(_ proposal: ProposedViewSize, nsView: ActionButton, context: Context) -> CGSize? {
-            nsView.intrinsicContentSize
+            configuration.systemImage == nil ? nsView.intrinsicContentSize : CGSize(width: 28, height: 28)
         }
     }
 
@@ -148,11 +154,11 @@ struct PanelButton: View {
 }
 
 enum PanelControl: String {
-    case prompt, run, copy, edit, replace, dismiss, history, new
+    case prompt, run, copy, edit, replace, dismiss, history, new, composer, send, stop, retry, compact
 
     var shortcut: PanelShortcut? {
         switch self {
-        case .prompt: nil
+        case .prompt, .composer, .send, .stop, .retry, .compact: nil
         case .run: .run
         case .copy: .copy
         case .edit: .edit
@@ -167,11 +173,12 @@ enum PanelControl: String {
 extension PanelButton {
     init(
         _ title: String, control: PanelControl, focus: Binding<PanelControl?>,
-        isEnabled: Bool = true, isPrimary: Bool = false, action: @escaping () -> Void
+        isEnabled: Bool = true, isPrimary: Bool = false, systemImage: String? = nil, action: @escaping () -> Void
     ) {
         self.init(
             title: title, shortcut: control.shortcut, isEnabled: isEnabled, isPrimary: isPrimary,
-            isFocused: focus.wrappedValue == control, prefersInitialFocus: control == .copy,
+            systemImage: systemImage,
+            isFocused: focus.wrappedValue == control,
             identifier: control.rawValue,
             onFocus: { if focus.wrappedValue != control { focus.wrappedValue = control } }, action: action
         )

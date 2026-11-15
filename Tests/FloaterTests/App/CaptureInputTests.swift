@@ -81,7 +81,7 @@ final class CaptureInputTests: XCTestCase {
         defer { controller.hide() }
 
         try await controller.handle(captureURL(previous: app), fallbackApplication: nil)
-        await waitUntil { store.entries.count == 1 }
+        await waitUntil { !model.isGenerating }
 
         XCTAssertEqual(reads, 1)
         XCTAssertEqual(activations, 0)
@@ -311,8 +311,8 @@ final class CaptureInputTests: XCTestCase {
 private final class CountingProvider: AIProvider {
     var requests: [PromptRequest] = []
 
-    func generate(_ request: PromptRequest, onUpdate: @MainActor (String) -> Void) async throws {
-        requests.append(request)
+    func generate(messages: [ChatMessage], onUpdate: @MainActor (String) -> Void) async throws {
+        requests.append(PromptRequest(prompt: messages.last?.content ?? ""))
         onUpdate("Done")
     }
 }

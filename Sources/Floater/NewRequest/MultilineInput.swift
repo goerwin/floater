@@ -8,6 +8,9 @@ struct MultilineInput: View {
     let isFocused: Bool
     var prefersInitialFocus = false
     var identifier: String?
+    var sendsOnReturn = false
+    var visibleLineCount: Int?
+    var trailingContentWidth: CGFloat = 0
     let onFocus: () -> Void
     let onSubmit: () -> Void
 
@@ -18,6 +21,9 @@ struct MultilineInput: View {
             isFocused: isFocused,
             prefersInitialFocus: prefersInitialFocus,
             identifier: identifier,
+            sendsOnReturn: sendsOnReturn,
+            visibleLineCount: visibleLineCount,
+            trailingContentWidth: trailingContentWidth,
             onFocus: onFocus,
             onSubmit: onSubmit
         )
@@ -46,6 +52,9 @@ private struct NativeInput: NSViewRepresentable {
     let isFocused: Bool
     let prefersInitialFocus: Bool
     let identifier: String?
+    let sendsOnReturn: Bool
+    let visibleLineCount: Int?
+    let trailingContentWidth: CGFloat
     let onFocus: () -> Void
     let onSubmit: () -> Void
 
@@ -53,7 +62,8 @@ private struct NativeInput: NSViewRepresentable {
         Coordinator(input: self)
     }
 
-    func makeNSView(context: Context) -> InputTextView {
+    func makeNSView(context: Context) -> InputScrollView {
+        let scroll = InputScrollView()
         let view = InputTextView()
         view.delegate = context.coordinator
         view.isRichText = false
@@ -69,16 +79,28 @@ private struct NativeInput: NSViewRepresentable {
         view.textContainer?.widthTracksTextView = true
         view.isAutomaticQuoteSubstitutionEnabled = false
         view.setAccessibilityLabel(label)
-        return view
+        view.autoresizingMask = [.width]
+        scroll.drawsBackground = false
+        scroll.borderType = .noBorder
+        scroll.autohidesScrollers = true
+        scroll.scrollerStyle = .overlay
+        scroll.documentView = view
+        return scroll
     }
 
-    func updateNSView(_ view: InputTextView, context: Context) {
+    func updateNSView(_ scroll: InputScrollView, context: Context) {
         context.coordinator.input = self
+        guard let view = scroll.documentView as? InputTextView else { return }
+        scroll.hasVerticalScroller = visibleLineCount != nil
+        scroll.trailingContentWidth = trailingContentWidth
+        view.textContainer?.widthTracksTextView = trailingContentWidth == 0
         if view.string != text {
             view.string = text
+            scroll.resizeDocument()
         }
         view.onFocus = onFocus
         view.onSubmit = onSubmit
+        view.sendsOnReturn = sendsOnReturn
         let focusChanged = view.wantsFocus != isFocused || view.prefersInitialFocus != prefersInitialFocus
         view.wantsFocus = isFocused
         view.prefersInitialFocus = prefersInitialFocus
@@ -87,13 +109,17 @@ private struct NativeInput: NSViewRepresentable {
         view.invalidateIntrinsicContentSize()
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, nsView: InputTextView, context: Context) -> CGSize? {
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: InputScrollView, context: Context) -> CGSize? {
         let width = proposal.width ?? FloaterPanelLayout.contentWidth
-        guard let container = nsView.textContainer, let layout = nsView.layoutManager else { return nil }
-        container.containerSize = NSSize(width: max(1, width - 16), height: .greatestFiniteMagnitude)
+        guard let view = nsView.documentView as? InputTextView,
+              let container = view.textContainer, let layout = view.layoutManager else { return nil }
+        let lineHeight = layout.defaultLineHeight(for: view.font ?? .systemFont(ofSize: 13))
+        if let visibleLineCount {
+            return CGSize(width: width, height: ceil(lineHeight * CGFloat(visibleLineCount)) + 16)
+        }
+        container.containerSize = NSSize(width: max(1, width - 16 - trailingContentWidth), height: .greatestFiniteMagnitude)
         layout.ensureLayout(for: container)
         let textHeight = max(layout.usedRect(for: container).maxY, layout.extraLineFragmentRect.maxY)
-        let lineHeight = layout.defaultLineHeight(for: nsView.font ?? .systemFont(ofSize: 13))
         return CGSize(width: width, height: ceil(max(lineHeight * 2, textHeight)) + 16)
     }
 
@@ -107,7 +133,29 @@ private struct NativeInput: NSViewRepresentable {
         func textDidChange(_ notification: Notification) {
             guard let view = notification.object as? NSTextView else { return }
             input.text = view.string
+            (view.enclosingScrollView as? InputScrollView)?.resizeDocument()
+            view.scrollRangeToVisible(view.selectedRange())
         }
+    }
+}
+
+private final class InputScrollView: NSScrollView {
+    var trailingContentWidth: CGFloat = 0
+
+    override func layout() {
+        super.layout()
+        resizeDocument()
+    }
+
+    func resizeDocument() {
+        guard contentSize.width > 0, let view = documentView as? NSTextView,
+              let container = view.textContainer, let layout = view.layoutManager else { return }
+        view.setFrameSize(NSSize(width: contentSize.width, height: view.frame.height))
+        container.containerSize = NSSize(width: max(1, contentSize.width - 16 - trailingContentWidth), height: .greatestFiniteMagnitude)
+        layout.ensureLayout(for: container)
+        let height = ceil(max(layout.usedRect(for: container).maxY, layout.extraLineFragmentRect.maxY)) + 16
+        view.setFrameSize(NSSize(width: contentSize.width, height: max(contentSize.height, height)))
+        reflectScrolledClipView(contentView)
     }
 }
 
@@ -116,6 +164,7 @@ private final class InputTextView: NSTextView {
     var prefersInitialFocus = false
     var onFocus: (() -> Void)?
     var onSubmit: (() -> Void)?
+    var sendsOnReturn = false
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -149,7 +198,9 @@ private final class InputTextView: NSTextView {
                 super.keyDown(with: event)
             }
         } else if event.keyCode == 36 || event.keyCode == 76 {
-            if modifiers.isEmpty || modifiers == .shift {
+            if modifiers.isEmpty, sendsOnReturn, !hasMarkedText() {
+                onSubmit?()
+            } else if modifiers.isEmpty || modifiers == .shift {
                 insertNewline(nil)
             } else if modifiers == .command {
                 onSubmit?()

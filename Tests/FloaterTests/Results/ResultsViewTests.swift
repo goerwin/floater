@@ -6,6 +6,67 @@ import XCTest
 
 @MainActor
 final class ResultsViewTests: XCTestCase {
+    func testComposerShowsThreeLinesAndScrollsLongDrafts() throws {
+        let state = FloaterState(provider: TestProvider())
+        state.restore(HistoryEntry(request: PromptRequest(prompt: "Prompt"), response: "Result"))
+        let window = makeWindow(state: state)
+        defer { window.close() }
+        let editor = try XCTUnwrap(textViews(in: window.contentView!).first { $0.identifier?.rawValue == "composer" })
+        let scroll = try XCTUnwrap(editor.enclosingScrollView)
+        let send = try XCTUnwrap(buttons(in: window.contentView!).first { $0.accessibilityLabel() == "Send" })
+        let response = try XCTUnwrap(descendants(of: ResponseScrollView.self, in: window.contentView!).first)
+        let composerBounds = scroll.convert(scroll.bounds, to: window.contentView)
+        let sendBounds = send.convert(send.bounds, to: window.contentView)
+        XCTAssertTrue(composerBounds.contains(sendBounds), "Send should sit inside the message box")
+        XCTAssertEqual(composerBounds.width, response.frame.width, accuracy: 1)
+        XCTAssertTrue(send.title.isEmpty, "Send should show only its icon")
+        XCTAssertNotNil(send.image)
+        let layout = try XCTUnwrap(editor.layoutManager)
+        let lineHeight = layout.defaultLineHeight(for: try XCTUnwrap(editor.font))
+        let expectedHeight = ceil(lineHeight * 3) + editor.textContainerInset.height * 2
+        XCTAssertEqual(scroll.contentView.bounds.height, expectedHeight, accuracy: 1)
+
+        let draft = (1...12).map { "Line \($0): a draft message." }.joined(separator: "\n")
+        editor.insertText(draft, replacementRange: NSRange(location: 0, length: 0))
+        settle(window)
+        XCTAssertEqual(state.followUp, draft)
+        XCTAssertEqual(scroll.contentView.bounds.height, expectedHeight, accuracy: 1)
+        XCTAssertGreaterThan(scroll.contentView.bounds.minY, 0, "Typing should keep the caret visible")
+        XCTAssertGreaterThan(scroll.documentView!.bounds.height, scroll.contentView.bounds.height)
+
+        scroll.contentView.scroll(to: .zero)
+        scroll.reflectScrolledClipView(scroll.contentView)
+        settle(window)
+        XCTAssertEqual(scroll.contentView.bounds.minY, 0, accuracy: 1)
+        editor.scrollRangeToVisible(NSRange(location: (draft as NSString).length, length: 0))
+        settle(window)
+        XCTAssertGreaterThan(scroll.contentView.bounds.minY, 0, "The last line should be reachable")
+
+        state.followUp = ""
+        settle(window)
+        XCTAssertEqual(scroll.contentView.bounds.height, expectedHeight, accuracy: 1)
+        XCTAssertEqual(scroll.contentView.bounds.minY, 0, accuracy: 1)
+    }
+
+    func testSavedRunnerErrorDoesNotDisplayTheRawTemplate() throws {
+        var entry = HistoryEntry(request: PromptRequest(prompt: "Original"), response: "First reply")
+        entry.messages.append(ChatMessage(role: .user, content: "Follow up"))
+        var failed = ChatMessage(role: .assistant, content: "", status: .failed)
+        failed.error = "Gemma could not finish this request. lexer failed; {% set previous_messages = secret user prompt %}"
+        entry.messages.append(failed)
+        let state = FloaterState(provider: TestProvider())
+        state.restore(entry)
+        let window = makeWindow(state: state)
+        defer { window.close() }
+        let text = try XCTUnwrap(descendants(of: ResponseScrollView.self, in: window.contentView!).first)
+        let displayed = try XCTUnwrap(textViews(in: text).first).string
+        XCTAssertTrue(displayed.contains("First reply"))
+        XCTAssertTrue(displayed.contains("Follow up"))
+        XCTAssertTrue(displayed.contains("[Failed]"))
+        XCTAssertFalse(displayed.contains("previous_messages"))
+        XCTAssertFalse(displayed.contains("secret user prompt"))
+    }
+
     func testReplaceIsDisabledUntilAccessibilityIsGrantedAndCanRequestAccess() throws {
         var granted = false
         var requests = 0
@@ -38,41 +99,34 @@ final class ResultsViewTests: XCTestCase {
         XCTAssertFalse(replace.isEnabled)
     }
 
-    func testRapidTabPressesMoveNativeFocusImmediately() throws {
+    func testOptionTabTraversesComposerAndActionsInBothDirections() throws {
         let model = FloaterState(provider: TestProvider())
         model.restore(HistoryEntry(request: PromptRequest(prompt: "Prompt"), response: "Result"))
         model.setCanReplace(true)
         let window = makeWindow(state: model)
         defer { window.close() }
-        for expected in ["Edit", "Replace", "Dismiss", "History", "New", "Copy"] {
-            window.sendEvent(keyEvent("\t", code: 48, window: window))
-            XCTAssertEqual((window.firstResponder as? NSButton)?.accessibilityLabel(), expected)
+        let order = ["composer", "compact", "copy", "edit", "replace", "dismiss", "history", "new"]
+        for identifier in order.dropFirst() + ["composer"] {
+            window.sendEvent(keyEvent("\t", code: 48, modifiers: .option, window: window))
+            XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, identifier)
         }
-        for expected in ["New", "History", "Dismiss", "Replace", "Edit", "Copy"] {
-            window.sendEvent(keyEvent("\t", code: 48, modifiers: [.option, .shift], window: window))
-            XCTAssertEqual((window.firstResponder as? NSButton)?.accessibilityLabel(), expected)
+        for identifier in order.dropFirst().reversed() + ["composer"] {
+            sendKey("\t", code: 48, modifiers: [.option, .shift], to: window)
+            XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, identifier)
         }
-        settle(window)
-        XCTAssertEqual((window.firstResponder as? NSButton)?.accessibilityLabel(), "Copy")
     }
 
-    func testPlainAndOptionTabUseSameFocusOrderInBothDirections() throws {
-        for option: NSEvent.ModifierFlags in [[], .option] {
-            let model = FloaterState(provider: TestProvider())
-            model.restore(HistoryEntry(request: PromptRequest(prompt: "Prompt"), response: "Result"))
-            model.setCanReplace(true)
-            let window = makeWindow(state: model)
-            defer { window.close() }
-            let order = ["Copy", "Edit", "Replace", "Dismiss", "History", "New"]
-            for title in order.dropFirst() + ["Copy"] {
-                sendKey("\t", code: 48, modifiers: option, to: window)
-                XCTAssertEqual((window.firstResponder as? NSButton)?.accessibilityLabel(), title)
-            }
-            for title in order.dropFirst().reversed() + ["Copy"] {
-                sendKey("\t", code: 48, modifiers: option.union(.shift), to: window)
-                XCTAssertEqual((window.firstResponder as? NSButton)?.accessibilityLabel(), title)
-            }
-        }
+    func testPlainTabStaysInTheComposer() throws {
+        let model = FloaterState(provider: TestProvider())
+        model.restore(HistoryEntry(request: PromptRequest(prompt: "Prompt"), response: "Result"))
+        let window = makeWindow(state: model)
+        defer { window.close() }
+        let editor = try XCTUnwrap(window.firstResponder as? NSTextView)
+        sendKey("\t", code: 48, to: window)
+        XCTAssertTrue(window.firstResponder === editor)
+        XCTAssertEqual(model.followUp, "\t")
+        sendKey("\t", code: 48, modifiers: .option, to: window)
+        XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, "compact")
     }
 
     func testResultsActionsActivateWithEnterAndSpace() throws {
@@ -89,17 +143,14 @@ final class ResultsViewTests: XCTestCase {
                 onDismiss: { dismissals += 1 }, onHistory: { historyOpenings += 1 }
             )
             defer { window.close() }
-            sendKey(characters, code: code, to: window)
+            for title in ["Copy", "Replace", "Dismiss", "History"] {
+                let button = try XCTUnwrap(buttons(in: window.contentView!).first { $0.accessibilityLabel() == title })
+                window.makeFirstResponder(button)
+                sendKey(characters, code: code, to: window)
+            }
             XCTAssertEqual(copies, 1)
-            sendKey("\t", code: 48, to: window)
-            sendKey("\t", code: 48, to: window)
-            sendKey(characters, code: code, to: window)
             XCTAssertEqual(replacements, 1)
-            sendKey("\t", code: 48, to: window)
-            sendKey(characters, code: code, to: window)
             XCTAssertEqual(dismissals, 1)
-            sendKey("\t", code: 48, to: window)
-            sendKey(characters, code: code, to: window)
             XCTAssertEqual(historyOpenings, 1)
         }
     }
@@ -111,6 +162,8 @@ final class ResultsViewTests: XCTestCase {
         var copies = 0
         let window = makeWindow(state: model, onCopy: { copies += 1 })
         defer { window.close() }
+        let copy = try XCTUnwrap(buttons(in: window.contentView!).first { $0.accessibilityLabel() == "Copy" })
+        window.makeFirstResponder(copy)
         sendKey("c", code: 8, modifiers: .command, to: window)
         XCTAssertEqual(copies, 1)
         sendKey("e", code: 14, modifiers: .command, to: window)
@@ -121,27 +174,23 @@ final class ResultsViewTests: XCTestCase {
         XCTAssertEqual(copies, 1)
     }
 
-    func testSavedResultOpensAndCanBeEditedWithOriginalInput() throws {
+    func testSavedResultCanBeUsedAsANewPrompt() throws {
         let model = FloaterState(provider: TestProvider())
         let controller = FloatingPanelController(state: model)
-        let entry = HistoryEntry(
-            request: PromptRequest(prompt: "Translate\n\nHola\nMundo", title: "Saved translation"),
-            response: "Hello\nWorld"
-        )
+        let entry = HistoryEntry(request: PromptRequest(prompt: "Translate\n\nHola\nMundo", title: "Saved translation"), response: "Hello\nWorld")
         model.restore(entry)
         controller.show(previousApplication: nil)
         let window = try XCTUnwrap(controller.window)
-        defer { controller.dismiss() }
+        defer { controller.hide() }
         settle(window)
         XCTAssertEqual(window.title, "Saved translation")
-        XCTAssertEqual(model.response, entry.response)
-        XCTAssertFalse(model.isGenerating)
-
-        sendKey("\t", code: 48, modifiers: .option, to: window)
-        sendKey("\r", code: 36, to: window)
+        let edit = try XCTUnwrap(buttons(in: window.contentView!).first { $0.accessibilityLabel() == "Edit as New" })
+        edit.performClick(nil)
+        settle(window)
         XCTAssertNil(model.currentRequest)
         XCTAssertEqual(textViews(in: window.contentView!).map(\.string), [entry.request.prompt])
         sendKey("\r", code: 36, modifiers: .command, to: window)
         XCTAssertEqual(model.currentRequest, entry.request)
+        XCTAssertNotEqual(model.conversation?.id, entry.id)
     }
 }

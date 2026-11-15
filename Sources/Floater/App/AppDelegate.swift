@@ -11,7 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         provider: SelectedModelProvider(settings: settings), historyStore: historyStore
     )
     private lazy var panelController = FloatingPanelController(
-        state: state, historyStore: historyStore, settings: settings, accessibility: accessibility
+        state: state, historyStore: historyStore, settings: settings, accessibility: accessibility,
+        sourceApplication: { [weak self] in self?.activeExternalApplication }
     )
     private var activationObserver: NSObjectProtocol?
     private var lastExternalApplication: NSRunningApplication?
@@ -42,6 +43,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        state.stop()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

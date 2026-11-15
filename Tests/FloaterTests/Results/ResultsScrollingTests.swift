@@ -5,6 +5,33 @@ import XCTest
 
 @MainActor
 final class ResultsScrollingTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        MainActor.assumeIsolated { _ = NSApplication.shared }
+    }
+
+    func testOpeningSavedConversationsStartsAtLatestMessageAndAllowsScrollingUp() throws {
+        let state = FloaterState(provider: TestProvider())
+        let window = makeWindow(state: state)
+        defer { window.close() }
+        let response = String(repeating: "Earlier message content.\n", count: 100) + "Latest reply"
+        for title in ["First conversation", "Second conversation"] {
+            state.showHistory(returnToRequest: true)
+            settle(window)
+            state.openHistoryEntry(HistoryEntry(request: PromptRequest(prompt: title), response: response))
+            settle(window)
+            let scroll = try XCTUnwrap(descendants(of: ResponseScrollView.self, in: window.contentView!).first)
+            XCTAssertGreaterThan(scroll.documentView!.bounds.height, scroll.contentView.bounds.height)
+            XCTAssertTrue(isAtBottom(scroll), "Opening a saved chat should reveal the latest reply")
+
+            scroll.contentView.scroll(to: NSPoint(x: 0, y: 100))
+            scroll.reflectScrolledClipView(scroll.contentView)
+            state.followUp = "A draft"
+            settle(window)
+            XCTAssertEqual(scroll.contentView.bounds.minY, 100, accuracy: 2, "Editing a draft must preserve the reading position")
+        }
+    }
+
     func testStreamingFollowsBottomAndPausesWhileReadingEarlierText() async throws {
         let provider = StreamingTestProvider()
         let state = FloaterState(provider: provider)
@@ -82,7 +109,7 @@ final class ResultsScrollingTests: XCTestCase {
         let window = makeWindow(state: state)
         defer { window.close(); provider.finish() }
         let originalScroll = try XCTUnwrap(descendants(of: NSScrollView.self, in: window.contentView!).first)
-        XCTAssertEqual(originalScroll.contentView.bounds.minY, 0, accuracy: 2, "Saved results start at the beginning")
+        XCTAssertTrue(isAtBottom(originalScroll), "Saved results start at the latest reply")
 
         state.start(request)
         provider.send(response)
@@ -100,7 +127,7 @@ final class ResultsScrollingTests: XCTestCase {
         XCTAssertEqual(scroll.contentView.bounds.minY, 100, accuracy: 2, "Finishing must preserve the reader's position")
         let text = try XCTUnwrap(textViews(in: scroll).first)
         XCTAssertTrue(text.isSelectable)
-        XCTAssertEqual(text.string, response)
+        XCTAssertEqual(text.string, "Floater\n" + response)
     }
 
     func testLongStreamingResponseRemainsScrollable() async throws {
@@ -149,7 +176,7 @@ private final class StreamingTestProvider: AIProvider {
     func send(_ text: String) { continuation.yield(text) }
     func finish() { continuation.finish() }
 
-    func generate(_ request: PromptRequest, onUpdate: @MainActor (String) -> Void) async throws {
+    func generate(messages: [ChatMessage], onUpdate: @MainActor (String) -> Void) async throws {
         for await text in updates { onUpdate(text) }
     }
 }

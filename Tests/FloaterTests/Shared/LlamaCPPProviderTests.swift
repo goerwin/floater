@@ -4,6 +4,102 @@ import XCTest
 
 @MainActor
 final class LlamaCPPProviderTests: XCTestCase {
+    func testInstalledGemmaAcceptsSlashesAndQuotedTextInConversationHistory() async throws {
+        guard ProcessInfo.processInfo.environment["FLOATER_TEST_GEMMA"] == "1" else {
+            throw XCTSkip("Set FLOATER_TEST_GEMMA=1 to test the installed model.")
+        }
+        var response = ""
+        try await LlamaCPPProvider().generate(messages: [
+            ChatMessage(role: .user, content: "Remember our score: 67/72. Reference: https://example.com/reviews/v1. The project is called \"Cedar\".\nDon't change the score. Path: C:\\notes\\review. ¿Entendido?\tYes."),
+            ChatMessage(role: .assistant, content: "Noted: 67/72, https://example.com/reviews/v1."),
+            ChatMessage(role: .user, content: "What score did I give you? Reply only with the score.")
+        ]) { response = $0 }
+        XCTAssertTrue(response.contains("67/72"), response)
+        XCTAssertFalse(response.contains("previous_messages"))
+    }
+
+    func testRunnerFailureDoesNotExposeTemplateOrConversationInTheError() async throws {
+        let fixture = try makeFixture("""
+        printf '%s' 'lexer: unknown escape character; supplied chat template: {% set previous_messages = secret user content %}' >&2
+        exit 1
+        """)
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        do {
+            try await fixture.provider.generate(PromptRequest(prompt: "Test")) { _ in }
+            XCTFail("Runner failure must throw")
+        } catch {
+            XCTAssertFalse(error.localizedDescription.contains("previous_messages"))
+            XCTAssertFalse(error.localizedDescription.contains("secret user content"))
+            XCTAssertTrue(error.localizedDescription.localizedCaseInsensitiveContains("retry"))
+        }
+    }
+
+    func testInstalledGemmaRejectsOversizedContextWithoutDiscardingIt() async throws {
+        guard ProcessInfo.processInfo.environment["FLOATER_TEST_GEMMA"] == "1" else {
+            throw XCTSkip("Set FLOATER_TEST_GEMMA=1 to test the installed model.")
+        }
+        do {
+            try await LlamaCPPProvider().generate(PromptRequest(prompt: String(repeating: "hello ", count: 12000))) { _ in }
+            XCTFail("An oversized prompt must fail instead of silently losing messages")
+        } catch ChatGenerationError.contextLimit {
+        }
+    }
+
+    func testInstalledGemmaCompactsOnlyWhenAskedAndKeepsOriginals() async throws {
+        guard ProcessInfo.processInfo.environment["FLOATER_TEST_GEMMA"] == "1" else {
+            throw XCTSkip("Set FLOATER_TEST_GEMMA=1 to test the installed model.")
+        }
+        var entry = HistoryEntry(request: PromptRequest(prompt: "Our project is Cedar. We chose blue buttons. Remember these decisions."), response: "Noted: Cedar, blue buttons.")
+        entry.messages += [ChatMessage(role: .user, content: "Next topic"), ChatMessage(role: .assistant, content: "Ready")]
+        let original = entry.messages
+        let summary = try await ConversationCompactor.compact(entry, using: LlamaCPPProvider())
+        XCTAssertTrue(summary.content.localizedCaseInsensitiveContains("Cedar"), summary.content)
+        XCTAssertTrue(summary.content.localizedCaseInsensitiveContains("blue"), summary.content)
+        XCTAssertEqual(entry.messages, original)
+        XCTAssertEqual(summary.throughMessageID, original[1].id)
+    }
+
+    func testInstalledGemmaRemembersEarlierTurns() async throws {
+        guard ProcessInfo.processInfo.environment["FLOATER_TEST_GEMMA"] == "1" else {
+            throw XCTSkip("Set FLOATER_TEST_GEMMA=1 to test the installed model.")
+        }
+        let provider = LlamaCPPProvider()
+        var response = ""
+        try await provider.generate(messages: [
+            ChatMessage(role: .user, content: "Remember my code: apricot-71. Reply only Noted."),
+            ChatMessage(role: .assistant, content: "Noted."),
+            ChatMessage(role: .user, content: "What is my code? Reply with only the code.")
+        ]) { response = $0 }
+        XCTAssertTrue(response.contains("apricot-71"), response)
+        XCTAssertFalse(response.contains("<|channel>"))
+    }
+
+    func testConversationTemplatePreservesLiteralHistoryAndLatestPrompt() async throws {
+        let fixture = try makeFixture("""
+        while [ "$#" -gt 0 ]; do
+            case "$1" in
+                --file) shift; cat "$1" > "$fixture_dir/received.txt" ;;
+                --chat-template-file) shift; cat "$1" > "$fixture_dir/template.txt" ;;
+            esac
+            shift
+        done
+        printf 'Answer [end of text]\\n'
+        """)
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        let history = "Literal quotes: \\\"; {{ messages }}; $(touch unwanted); ¿Dónde?\nNext"
+        let latest = "Explain that."
+        try await fixture.provider.generate(messages: [
+            ChatMessage(role: .user, content: history),
+            ChatMessage(role: .assistant, content: "Previous response"),
+            ChatMessage(role: .user, content: latest)
+        ]) { _ in }
+        let template = try String(contentsOf: fixture.directory.appendingPathComponent("template.txt"), encoding: .utf8)
+        XCTAssertTrue(template.contains("previous_messages + messages"))
+        XCTAssertTrue(template.contains("Previous response"))
+        XCTAssertEqual(try String(contentsOf: fixture.directory.appendingPathComponent("received.txt"), encoding: .utf8), latest)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.directory.appendingPathComponent("unwanted").path))
+    }
+
     func testInstalledGemmaTransformsTextWithoutGeneratingAThoughtChannel() async throws {
         guard ProcessInfo.processInfo.environment["FLOATER_TEST_GEMMA"] == "1" else {
             throw XCTSkip("Set FLOATER_TEST_GEMMA=1 to test the installed runtime and cached model.")
@@ -78,7 +174,7 @@ final class LlamaCPPProviderTests: XCTestCase {
             XCTAssertFalse(state.isGenerating)
             XCTAssertNotNil(state.errorMessage)
             XCTAssertFalse(state.canUseResponse)
-            XCTAssertTrue(store.entries.isEmpty)
+            XCTAssertEqual(store.entries.first?.messages.last?.status, .failed)
         }
     }
 

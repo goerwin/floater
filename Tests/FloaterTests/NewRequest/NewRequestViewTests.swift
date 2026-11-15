@@ -28,7 +28,7 @@ final class NewRequestViewTests: XCTestCase {
         model.restore(HistoryEntry(request: PromptRequest(prompt: "Prompt\n\nInput", title: "Title"), response: "Result"))
         let window = makeWindow(state: model)
         defer { window.close() }
-        sendKey("\t", code: 48, modifiers: .shift, to: window)
+        sendKey("\t", code: 48, modifiers: [.option, .shift], to: window)
         XCTAssertEqual((window.firstResponder as? NSButton)?.accessibilityLabel(), "New")
         sendKey("\r", code: 36, to: window)
         XCTAssertNil(model.currentRequest)

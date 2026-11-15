@@ -8,9 +8,28 @@ struct ResultsView: View {
     let onCopy: () -> Void
     let onReplace: () -> Void
     let onDismiss: () -> Void
+    @State private var composerHeight: CGFloat = 50
 
-    private var displayedText: String {
-        state.errorMessage ?? (state.response.isEmpty ? "No response was returned." : state.response)
+    private var transcript: String {
+        var parts: [String] = []
+        for (index, message) in state.messages.enumerated() {
+            if index == 0 && !state.isPromptExpanded { continue }
+            let label = message.role == .user ? "You" : "Floater"
+            var text = label + "\n" + message.content
+            switch message.status {
+            case .stopped: text += "\n[Stopped]"
+            case .failed: text += "\n[Failed]"
+            case .generating:
+                if message.content.isEmpty { text += state.preparationMessage }
+            case .complete: break
+            }
+            if let error = message.error { text += "\n" + ChatGenerationError.displayMessage(error) }
+            parts.append(text)
+        }
+        if let error = state.errorMessage, state.messages.last?.error != error {
+            parts.append("Error\n" + ChatGenerationError.displayMessage(error))
+        }
+        return parts.joined(separator: "\n\n")
     }
 
     var body: some View {
@@ -19,104 +38,76 @@ struct ResultsView: View {
                 Button {
                     state.isPromptExpanded.toggle()
                 } label: {
-                    Text(request.prompt)
+                    Text(state.isPromptExpanded ? "Hide full prompt" : request.prompt)
                         .font(.system(size: 12))
-                        .lineLimit(state.isPromptExpanded ? nil : 2)
+                        .lineLimit(2)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .frame(height: promptHeight(for: request.prompt), alignment: .topLeading)
                 }
                 .buttonStyle(.plain)
                 .focusable(false)
                 .help(state.isPromptExpanded ? "Collapse prompt" : "Show full prompt")
             }
+            ResponseText(
+                text: transcript,
+                isSelectable: true, isError: false,
+                maximumHeight: max(60, FloaterPanelLayout.maximumResponseHeight - composerHeight - 88 - noticeHeight),
+                scrollRequestID: state.messages.last?.id,
+                promptIsExpanded: state.isPromptExpanded
+            )
+            .id(state.resultID)
 
-            resultContent
-            if let message = state.actionErrorMessage {
-                Text(message)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
+            if let message = state.actionErrorMessage ?? state.persistenceError {
+                ScrollView { notice(message, isError: true) }.frame(maxHeight: 54)
             }
+            conversationActions
+            ChatComposer(state: state, focusedControl: $focusedControl)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { composerHeight = $0 }
             actionBar
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    @ViewBuilder
-    private var resultContent: some View {
-        if state.errorMessage == nil && state.response.isEmpty && state.isGenerating {
-            HStack(spacing: 8) {
-                ProgressView()
-                    .controlSize(.small)
-                Text(state.preparationMessage)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+    private var noticeHeight: CGFloat {
+        state.actionErrorMessage != nil || state.persistenceError != nil ? 62 : 0
+    }
+
+    private func notice(_ message: String, isError: Bool = false) -> some View {
+        Text(message)
+            .font(.system(size: 12))
+            .foregroundStyle(isError ? Color.red : Color.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .textSelection(.enabled)
+    }
+
+    private var conversationActions: some View {
+        HStack(spacing: 8) {
+            PanelButton("Compact", control: .compact, focus: $focusedControl, isEnabled: state.canCompact, action: state.compact)
+                .help("Summarize earlier messages for the model. Original messages stay saved.")
+            if state.isGenerating {
+                PanelButton("Stop", control: .stop, focus: $focusedControl, action: state.stop)
+            } else if state.canRetry {
+                PanelButton("Retry", control: .retry, focus: $focusedControl, action: state.retry)
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: min(36, resultContentHeightLimit))
-        } else {
-            ResponseText(
-                text: displayedText, isGenerating: state.isGenerating,
-                isSelectable: state.canUseResponse, isError: state.errorMessage != nil,
-                maximumHeight: resultContentHeightLimit
-            )
-            .id(state.resultID)
+            Spacer(minLength: 0)
+            if state.isCompacting {
+                Text("Compacting…").font(.caption).foregroundStyle(.secondary)
+            } else if state.conversation?.summary != nil {
+                Text("Earlier messages summarized").font(.caption).foregroundStyle(.secondary)
+                    .help("The model uses a summary of earlier messages. The full conversation is still shown here.")
+            }
         }
-    }
-
-    private var resultContentHeightLimit: CGFloat {
-        let errorHeight = state.actionErrorMessage.map {
-            measuredTextHeight($0, width: FloaterPanelLayout.contentWidth, fontSize: 12) + 8
-        } ?? 0
-        let maximumHeight = max(18, FloaterPanelLayout.maximumResponseHeight - errorHeight)
-        guard state.isPromptExpanded, let prompt = state.currentRequest?.prompt else {
-            return maximumHeight
-        }
-
-        let expandedPromptHeight = promptHeight(for: prompt)
-        let collapsedPromptHeight = summaryHeight(for: prompt)
-        let extraPromptHeight = max(0, expandedPromptHeight - collapsedPromptHeight)
-        return max(18, maximumHeight - extraPromptHeight)
-    }
-
-    private func summaryHeight(for text: String) -> CGFloat {
-        let font = NSFont.systemFont(ofSize: 12)
-        let twoLineMaximum = (font.ascender - font.descender + font.leading) * 2
-        let measured = measuredTextHeight(text, width: FloaterPanelLayout.contentWidth, fontSize: 12, limit: twoLineMaximum)
-        return min(twoLineMaximum, measured)
-    }
-
-    private func promptHeight(for text: String) -> CGFloat {
-        state.isPromptExpanded
-            ? measuredTextHeight(text, width: FloaterPanelLayout.contentWidth, fontSize: 12)
-            : summaryHeight(for: text)
-    }
-
-    private func measuredTextHeight(_ text: String, width: CGFloat, fontSize: CGFloat, limit: CGFloat = .greatestFiniteMagnitude) -> CGFloat {
-        let font = NSFont.systemFont(ofSize: fontSize)
-        let bounds = (text as NSString).boundingRect(
-            with: NSSize(width: width, height: limit),
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [.font: font]
-        )
-        let lineHeight = font.ascender - font.descender + font.leading
-        return ceil(max(lineHeight, bounds.height))
     }
 
     private var actionBar: some View {
         HStack(spacing: 10) {
             Spacer()
             PanelButton("Copy", control: .copy, focus: $focusedControl, isEnabled: state.canUseResponse, action: onCopy)
-                .help("Copy the response (Command+C)")
-            PanelButton("Edit", control: .edit, focus: $focusedControl, action: state.beginEditing)
-                .help("Edit the prompt and run it again (Command+E)")
-            PanelButton(
-                "Replace", control: .replace, focus: $focusedControl,
-                isEnabled: canReplace, action: onReplace
-            )
-            .help("Replace text in the previous app. Enable Accessibility from Floater's menu to allow this.")
+                .help("Copy the latest completed reply (Command+C)")
+            PanelButton("Edit as New", control: .edit, focus: $focusedControl, action: state.beginEditing)
+                .help("Copy the original prompt into a new draft (Command+E)")
+            PanelButton("Replace", control: .replace, focus: $focusedControl, isEnabled: canReplace, action: onReplace)
+                .help("Replace text in the source editor (Command+S)")
             PanelButton("Dismiss", control: .dismiss, focus: $focusedControl, action: onDismiss)
         }
     }

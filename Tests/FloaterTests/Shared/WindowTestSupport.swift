@@ -95,7 +95,7 @@ func keyEvent(
 
 @MainActor
 struct TestProvider: AIProvider {
-    func generate(_ request: PromptRequest, onUpdate: @MainActor (String) -> Void) async throws {
+    func generate(messages: [ChatMessage], onUpdate: @MainActor (String) -> Void) async throws {
         onUpdate("Test response")
     }
 }

@@ -49,7 +49,7 @@ struct HistoryView: View {
                                 state.query.isEmpty ? "No history yet" : "No matching results",
                                 systemImage: "clock.arrow.circlepath",
                                 description: Text(state.query.isEmpty
-                                    ? "Completed requests will appear here."
+                                    ? "Your conversations will appear here."
                                     : "Try a different search.")
                             )
                             .allowsHitTesting(false)
@@ -67,7 +67,7 @@ struct HistoryView: View {
                         Spacer()
                         PanelButton(title: "Dismiss", shortcut: .dismiss, identifier: "historyDismiss", action: onDismiss)
                         PanelButton(title: "Delete", keyHint: "⌫", isEnabled: selectedEntry != nil, identifier: "historyDelete", action: deleteSelection)
-                        PanelButton(title: "Open result", keyHint: "↩", isEnabled: selectedEntry != nil, identifier: "historyOpen") {
+                        PanelButton(title: "Open chat", keyHint: "↩", isEnabled: selectedEntry != nil, identifier: "historyOpen") {
                             if let selectedEntry { onOpen(selectedEntry) }
                         }
                     }

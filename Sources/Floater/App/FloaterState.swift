@@ -4,28 +4,31 @@ import FloaterCore
 
 @MainActor
 final class FloaterState: ObservableObject {
-    enum Screen {
-        case newRequest, history, results
-    }
+    enum Screen { case newRequest, history, results }
 
     @Published private(set) var screen: Screen = .newRequest
     @Published var prompt = ""
     @Published var title: String?
     @Published var isPromptExpanded = false
-    @Published private(set) var currentRequest: PromptRequest?
+    @Published private(set) var conversation: HistoryEntry?
     @Published private(set) var resultID = UUID()
-    @Published private(set) var response = ""
     @Published private(set) var isGenerating = false
+    @Published private(set) var isCompacting = false
     @Published private(set) var preparationMessage = "Generating response…"
-    @Published private var hasCompletedResponse = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var actionErrorMessage: String?
     @Published private(set) var canReplace = false
+    @Published var followUp = "" {
+        didSet {
+            guard conversation != nil, conversation?.draft != followUp else { return }
+            conversation?.draft = followUp
+            conversation?.updatedAt = .now
+            scheduleSave()
+        }
+    }
 
     private struct ResultState {
-        let request: PromptRequest?
-        let response: String
-        let hasCompletedResponse: Bool
+        let conversation: HistoryEntry?
         let errorMessage: String?
         let actionErrorMessage: String?
     }
@@ -49,11 +52,22 @@ final class FloaterState: ObservableObject {
     private let historyStore: HistoryStore?
     private var generationTask: Task<Void, Never>?
     private var activeGenerationID: UUID?
+    private var saveTask: Task<Void, Never>?
 
-    var canSubmit: Bool { !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    var canUseResponse: Bool {
-        hasCompletedResponse && errorMessage == nil && !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    var currentRequest: PromptRequest? { conversation?.request }
+    var messages: [ChatMessage] { conversation?.messages ?? [] }
+    var response: String { conversation?.response ?? "" }
+    var responseForActions: String {
+        messages.last(where: { $0.role == .assistant && $0.status == .complete })?.content ?? ""
     }
+    var canSubmit: Bool { !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    var canSend: Bool { !isGenerating && !followUp.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    var canUseResponse: Bool { !responseForActions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    var canRetry: Bool {
+        !isGenerating && messages.last?.role == .assistant && [.failed, .stopped].contains(messages.last?.status)
+    }
+    var canCompact: Bool { !isGenerating && !messages.isEmpty }
+    var persistenceError: String? { historyStore?.errorMessage }
 
     var windowTitle: String {
         if screen == .history { return "History" }
@@ -62,10 +76,7 @@ final class FloaterState: ObservableObject {
     }
 
     private var resultState: ResultState {
-        ResultState(
-            request: currentRequest, response: response, hasCompletedResponse: hasCompletedResponse,
-            errorMessage: errorMessage, actionErrorMessage: actionErrorMessage
-        )
+        ResultState(conversation: conversation, errorMessage: errorMessage, actionErrorMessage: actionErrorMessage)
     }
 
     init(provider: any AIProvider, historyStore: HistoryStore? = nil) {
@@ -83,6 +94,7 @@ final class FloaterState: ObservableObject {
 
     func showNewRequest() {
         clearResult()
+        historySession = nil
         prompt = ""
         title = nil
         showRequest()
@@ -97,6 +109,7 @@ final class FloaterState: ObservableObject {
 
     func beginEditing() {
         guard let request = currentRequest else { return }
+        stop()
         let result = resultState
         clearResult()
         editingResult = result
@@ -118,6 +131,7 @@ final class FloaterState: ObservableObject {
     }
 
     func openHistoryEntry(_ entry: HistoryEntry) {
+        if entry.id != conversation?.id { stop() }
         if historySession?.returnsToRequest == true, historySession?.originalRequest == nil {
             historySession?.originalRequest = RequestState(
                 result: resultState, editingResult: editingResult,
@@ -142,86 +156,178 @@ final class FloaterState: ObservableObject {
             showRequest()
             return true
         }
-        if historySession != nil {
-            screen = .history
-            return true
-        }
+        // Escape in a conversation always hides it, including when opened from History.
+        historySession = nil
         title = nil
         return false
     }
 
     func presentFailure(_ request: PromptRequest, message: String) {
         clearResult()
-        currentRequest = request
+        historySession = nil
+        conversation = HistoryEntry(request: request)
         errorMessage = message
         screen = .results
     }
 
     func start(_ request: PromptRequest) {
         clearResult()
+        historySession = nil
+        conversation = HistoryEntry(request: request)
+        screen = .results
+        generateReply()
+    }
+
+    func sendFollowUp() {
+        guard canSend, conversation != nil else { return }
+        conversation?.messages.append(ChatMessage(role: .user, content: followUp))
+        followUp = ""
+        generateReply()
+    }
+
+    func retry() {
+        guard canRetry else { return }
+        conversation?.messages.removeLast()
+        generateReply()
+    }
+
+    func stop() {
+        activeGenerationID = nil
+        generationTask?.cancel()
+        generationTask = nil
+        if isGenerating, !isCompacting, conversation?.messages.last?.status == .generating,
+           let index = conversation?.messages.indices.last {
+            conversation?.messages[index].status = .stopped
+            conversation?.updatedAt = .now
+        }
+        isGenerating = false
+        isCompacting = false
+        persist()
+    }
+
+    func compact() {
+        guard canCompact, let original = conversation else { return }
+        actionErrorMessage = nil
         let generationID = UUID()
         activeGenerationID = generationID
-        currentRequest = request
-        screen = .results
         isGenerating = true
-        preparationMessage = provider.preparationMessage
-
+        isCompacting = true
+        preparationMessage = "Compacting conversation…"
         let provider = self.provider
         generationTask = Task { [weak self] in
             do {
-                try await provider.generate(request) { [weak self] partialResponse in
-                    guard let self, self.activeGenerationID == generationID else { return }
-                    self.response = partialResponse
-                }
+                let summary = try await ConversationCompactor.compact(original, using: provider)
                 guard let self, self.activeGenerationID == generationID, !Task.isCancelled else { return }
+                self.conversation?.summary = summary
+                self.conversation?.updatedAt = .now
                 self.isGenerating = false
-                self.hasCompletedResponse = true
-                self.historyStore?.record(request, response: self.response)
-            } catch is CancellationError {
+                self.isCompacting = false
+                self.activeGenerationID = nil
+                self.generationTask = nil
+                self.persist()
+            } catch {
                 guard let self, self.activeGenerationID == generationID else { return }
                 self.isGenerating = false
-                self.response = ""
-            } catch {
-                guard let self, self.activeGenerationID == generationID, !Task.isCancelled else { return }
-                self.isGenerating = false
-                self.errorMessage = error.localizedDescription
+                self.isCompacting = false
+                self.activeGenerationID = nil
+                self.generationTask = nil
+                self.actionErrorMessage = "Compaction didn't finish. Your conversation is unchanged. \(error.localizedDescription)"
             }
         }
     }
 
+    private func generateReply() {
+        guard let context = conversation?.contextMessages(), !context.isEmpty else { return }
+        let generationID = UUID()
+        activeGenerationID = generationID
+        conversation?.messages.append(ChatMessage(role: .assistant, content: "", status: .generating))
+        conversation?.updatedAt = .now
+        errorMessage = nil
+        actionErrorMessage = nil
+        isGenerating = true
+        preparationMessage = provider.preparationMessage
+        persist()
+        let provider = self.provider
+        generationTask = Task { [weak self] in
+            do {
+                try await provider.generate(messages: context) { [weak self] partial in
+                    guard let self, self.activeGenerationID == generationID, let index = self.conversation?.messages.indices.last else { return }
+                    self.conversation?.messages[index].content = partial
+                    self.scheduleSave()
+                }
+                guard let self, self.activeGenerationID == generationID, !Task.isCancelled else { return }
+                guard !self.response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw ChatGenerationError.emptyResponse
+                }
+                self.finishReply(status: .complete)
+            } catch is CancellationError {
+                guard let self, self.activeGenerationID == generationID else { return }
+                self.finishReply(status: .stopped)
+            } catch {
+                guard let self, self.activeGenerationID == generationID, !Task.isCancelled else { return }
+                self.finishReply(status: .failed, error: error.localizedDescription)
+            }
+        }
+    }
+
+    private func finishReply(status: ChatMessage.Status, error: String? = nil) {
+        if let index = conversation?.messages.indices.last {
+            conversation?.messages[index].status = status
+            conversation?.messages[index].error = error
+        }
+        conversation?.updatedAt = .now
+        errorMessage = error
+        isGenerating = false
+        activeGenerationID = nil
+        generationTask = nil
+        persist()
+    }
+
     func restore(_ entry: HistoryEntry) {
-        restore(request: entry.request, response: entry.response)
+        if conversation?.id == entry.id { screen = .results; return }
+        restore(ResultState(conversation: entry, errorMessage: entry.messages.last?.error, actionErrorMessage: nil))
     }
 
     func restore(request: PromptRequest?, response: String, errorMessage: String? = nil) {
-        restore(ResultState(
-            request: request, response: response, hasCompletedResponse: true,
-            errorMessage: errorMessage, actionErrorMessage: nil
-        ))
+        var entry = request.map { HistoryEntry(request: $0, response: response) }
+        if errorMessage != nil, let index = entry?.messages.indices.last {
+            entry?.messages[index].status = .failed
+            entry?.messages[index].error = errorMessage
+        }
+        restore(ResultState(conversation: entry, errorMessage: errorMessage, actionErrorMessage: nil))
     }
 
     private func restore(_ result: ResultState) {
         clearResult()
-        currentRequest = result.request
-        response = result.response
-        hasCompletedResponse = result.hasCompletedResponse
+        conversation = result.conversation
+        followUp = result.conversation?.draft ?? ""
         errorMessage = result.errorMessage
         actionErrorMessage = result.actionErrorMessage
         screen = currentRequest == nil ? .newRequest : .results
     }
 
     private func clearResult() {
-        generationTask?.cancel()
-        generationTask = nil
-        activeGenerationID = nil
+        stop()
         resultID = UUID()
-        currentRequest = nil
-        response = ""
-        isGenerating = false
-        hasCompletedResponse = false
+        conversation = nil
+        followUp = ""
         errorMessage = nil
         actionErrorMessage = nil
         editingResult = nil
         isPromptExpanded = false
+    }
+
+    private func scheduleSave() {
+        guard saveTask == nil else { return }
+        saveTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+            self?.persist()
+        }
+    }
+
+    private func persist() {
+        saveTask?.cancel()
+        saveTask = nil
+        if let conversation { historyStore?.upsert(conversation) }
     }
 }

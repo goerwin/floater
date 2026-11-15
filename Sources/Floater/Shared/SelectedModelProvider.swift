@@ -7,6 +7,7 @@ final class SelectedModelProvider: AIProvider {
     private let gemma: any AIProvider
 
     var preparationMessage: String { provider.preparationMessage }
+    var compactionChunkSize: Int { provider.compactionChunkSize }
 
     private var provider: any AIProvider {
         switch settings.selectedModel {
@@ -25,8 +26,8 @@ final class SelectedModelProvider: AIProvider {
         self.gemma = gemma
     }
 
-    func generate(_ request: PromptRequest, onUpdate: @MainActor (String) -> Void) async throws {
+    func generate(messages: [ChatMessage], onUpdate: @MainActor (String) -> Void) async throws {
         let provider = self.provider
-        try await provider.generate(request, onUpdate: onUpdate)
+        try await provider.generate(messages: messages, onUpdate: onUpdate)
     }
 }

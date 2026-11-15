@@ -3,15 +3,18 @@ import SwiftUI
 
 struct ResponseText: NSViewRepresentable {
     let text: String
-    let isGenerating: Bool
     let isSelectable: Bool
     let isError: Bool
     let maximumHeight: CGFloat
+    var scrollRequestID: UUID?
+    var promptIsExpanded = false
 
     func makeNSView(context: Context) -> ResponseScrollView { ResponseScrollView() }
 
     func updateNSView(_ view: ResponseScrollView, context: Context) {
-        view.update(text: text, isGenerating: isGenerating, isSelectable: isSelectable, isError: isError)
+        view.beginTurn(scrollRequestID)
+        view.revealPrompt(promptIsExpanded)
+        view.update(text: text, isSelectable: isSelectable, isError: isError)
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: ResponseScrollView, context: Context) -> CGSize? {
@@ -24,8 +27,24 @@ final class ResponseScrollView: NSScrollView {
     private let responseView = NSTextView()
     private var followsBottom = true
     private var updateDepth = 0
-    private var wasGenerating = false
     private var hasText = false
+    private var turnID: UUID?
+    private var promptIsExpanded = false
+
+    func beginTurn(_ id: UUID?) {
+        if turnID != id { followsBottom = true; turnID = id }
+    }
+
+    func revealPrompt(_ expanded: Bool) {
+        updateDepth += 1
+        defer { updateDepth -= 1 }
+        if expanded && !promptIsExpanded {
+            followsBottom = false
+            contentView.scroll(to: .zero)
+            reflectScrolledClipView(contentView)
+        }
+        promptIsExpanded = expanded
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -55,10 +74,10 @@ final class ResponseScrollView: NSScrollView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func update(text: String, isGenerating: Bool, isSelectable: Bool, isError: Bool) {
+    func update(text: String, isSelectable: Bool, isError: Bool) {
         updateDepth += 1
         defer { updateDepth -= 1 }
-        let shouldFollow = followsBottom && (isGenerating || wasGenerating)
+        let shouldFollow = followsBottom
         let previousOffset = contentView.bounds.origin
         let color: NSColor = isError ? .systemRed : .labelColor
         responseView.isSelectable = isSelectable
@@ -73,7 +92,6 @@ final class ResponseScrollView: NSScrollView {
         }
         if responseView.textColor != color { responseView.textColor = color }
         hasText = true
-        wasGenerating = isGenerating
         resizeDocument(width: contentSize.width)
         contentView.scroll(to: shouldFollow ? bottomOffset : previousOffset)
         reflectScrolledClipView(contentView)
@@ -88,7 +106,7 @@ final class ResponseScrollView: NSScrollView {
     override func layout() {
         updateDepth += 1
         defer { updateDepth -= 1 }
-        let shouldFollow = followsBottom && wasGenerating
+        let shouldFollow = followsBottom
         super.layout()
         resizeDocument(width: contentSize.width)
         if shouldFollow {
@@ -101,7 +119,7 @@ final class ResponseScrollView: NSScrollView {
         updateDepth += 1
         defer { updateDepth -= 1 }
         super.setFrameSize(newSize)
-        if followsBottom && wasGenerating {
+        if followsBottom {
             contentView.scroll(to: bottomOffset)
             reflectScrolledClipView(contentView)
         }

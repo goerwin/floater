@@ -56,7 +56,8 @@ private final class RecordingModel: AIProvider {
     var waitsForCompletion = true
     private var continuation: CheckedContinuation<Void, Never>?
 
-    func generate(_ request: PromptRequest, onUpdate: @MainActor (String) -> Void) async throws {
+    func generate(messages: [ChatMessage], onUpdate: @MainActor (String) -> Void) async throws {
+        let request = PromptRequest(prompt: messages.last?.content ?? "")
         requests.append(request)
         if waitsForCompletion {
             await withCheckedContinuation { continuation = $0 }

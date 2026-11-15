@@ -101,7 +101,7 @@ struct FloaterWindowView: View {
 
     private func focusRequest() {
         guard state.screen != .history else { return }
-        focusedControl = state.screen == .newRequest ? .prompt : (state.canUseResponse ? .copy : .edit)
+        focusedControl = state.screen == .newRequest ? .prompt : .composer
     }
 
     private func newRequest() {
@@ -152,14 +152,14 @@ struct FloaterWindowView: View {
         guard state.screen == .results, modifiers == .command else { return false }
         switch event.charactersIgnoringModifiers?.lowercased() {
         case "c":
-            guard state.canUseResponse else { return true }
+            if let editor = window.firstResponder as? NSTextView, editor.isEditable { return false }
             let action = #selector(NSText.copy(_:))
             let item = NSMenuItem(title: "Copy", action: action, keyEquivalent: "c")
             if let target = NSApp.target(forAction: action, to: nil, from: nil),
                (target as? NSUserInterfaceValidations)?.validateUserInterfaceItem(item) == true
                 || (target as? NSMenuItemValidation)?.validateMenuItem(item) == true {
                 NSApp.sendAction(action, to: target, from: nil)
-            } else {
+            } else if state.canUseResponse {
                 onCopy()
             }
             return true
@@ -176,7 +176,10 @@ struct FloaterWindowView: View {
         if state.screen == .newRequest {
             controls = [.prompt, .dismiss] + (state.canSubmit ? [.run] : []) + [.history, .new]
         } else {
-            controls = (state.canUseResponse ? [.copy, .edit] : [.edit])
+            controls = [.composer] + (state.canSend ? [.send] : [])
+                + (state.canCompact ? [.compact] : [])
+                + (state.isGenerating ? [.stop] : state.canRetry ? [.retry] : [])
+                + (state.canUseResponse ? [.copy, .edit] : [.edit])
                 + (canReplace ? [.replace] : [])
                 + [.dismiss, .history, .new]
         }

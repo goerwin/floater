@@ -27,9 +27,13 @@ final class HistoryStore: ObservableObject {
 
     func record(_ request: PromptRequest, response: String) {
         guard !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        upsert(HistoryEntry(request: request, response: response))
+    }
+
+    func upsert(_ entry: HistoryEntry) {
         guard !loadFailed else { return }
-        let entry = HistoryEntry(request: request, response: response)
-        save(Array(([entry] + entries).prefix(Self.limit)))
+        let updated = ([entry] + entries.filter { $0.id != entry.id }).sorted { $0.updatedAt > $1.updatedAt }
+        save(Array(updated.prefix(Self.limit)))
     }
 
     func delete(_ id: UUID) {

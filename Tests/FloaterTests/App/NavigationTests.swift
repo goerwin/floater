@@ -105,7 +105,7 @@ final class NavigationTests: XCTestCase {
             if mode == "newRequest" {
                 XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, "prompt")
             } else if mode == "results" {
-                XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, "copy")
+                XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, "composer")
             } else {
                 XCTAssertNotNil(window.contentView?.firstDescendant(where: { $0 is NSSearchField }).flatMap { ($0 as? NSSearchField)?.currentEditor() })
             }
@@ -119,50 +119,26 @@ final class NavigationTests: XCTestCase {
         }
     }
 
-    func testHistoryBrowsingAndEditingPreserveTheOriginatingDraftOrResponse() throws {
-        for resultsMode in [false, true] {
-            let model = FloaterState(provider: TestProvider())
-            let original = HistoryEntry(request: PromptRequest(prompt: "Original prompt\n\nOriginal input"), response: "Original response")
-            if resultsMode {
-                model.restore(original)
-                model.setActionError("Original action error")
-                model.isPromptExpanded = true
-            }
-            let controller = FloatingPanelController(state: model)
-            controller.show(previousApplication: nil)
-            let window = try XCTUnwrap(controller.window)
-            defer { controller.hide() }
-            settle(window)
-            if !resultsMode {
-                let editor = try XCTUnwrap(textViews(in: window.contentView!).first)
-                editor.insertText("Original draft\n\nDraft input", replacementRange: editor.selectedRange())
-                settle(window)
-            }
-            controller.showHistory()
-            controller.openHistoryEntry(HistoryEntry(request: PromptRequest(prompt: "Saved prompt\n\nSaved input"), response: "Saved result"))
-            settle(window)
-            sendKey("e", code: 14, modifiers: .command, to: window)
-            XCTAssertEqual(textViews(in: window.contentView!).filter { !$0.isFieldEditor }.map(\.string), ["Saved prompt\n\nSaved input"])
-            sendKey("\u{1b}", code: 53, to: window)
-            XCTAssertFalse(controller.isShowingHistory)
-            XCTAssertTrue(controller.isVisible)
-            XCTAssertEqual(model.currentRequest?.prompt, "Saved prompt\n\nSaved input")
-            XCTAssertEqual(model.response, "Saved result")
-            sendKey("\u{1b}", code: 53, to: window)
-            XCTAssertTrue(controller.isShowingHistory)
-            sendKey("\u{1b}", code: 53, to: window)
-            XCTAssertFalse(controller.isShowingHistory)
-            XCTAssertTrue(controller.isVisible)
-            if resultsMode {
-                XCTAssertEqual(model.currentRequest, original.request)
-                XCTAssertEqual(model.response, original.response)
-                XCTAssertEqual(model.actionErrorMessage, "Original action error")
-                XCTAssertTrue(model.isPromptExpanded)
-            } else {
-                XCTAssertNil(model.currentRequest)
-                XCTAssertEqual(textViews(in: window.contentView!).filter { !$0.isFieldEditor }.map(\.string), ["Original draft\n\nDraft input"])
-            }
-        }
+    func testEditingASavedConversationThenDismissingKeepsItAvailable() throws {
+        let model = FloaterState(provider: TestProvider())
+        let saved = HistoryEntry(request: PromptRequest(prompt: "Saved prompt"), response: "Saved result")
+        let controller = FloatingPanelController(state: model)
+        controller.show(previousApplication: nil)
+        let window = try XCTUnwrap(controller.window)
+        defer { controller.hide() }
+        controller.showHistory()
+        controller.openHistoryEntry(saved)
+        settle(window)
+        sendKey("e", code: 14, modifiers: .command, to: window)
+        XCTAssertEqual(model.prompt, "Saved prompt")
+        sendKey("\u{1b}", code: 53, to: window)
+        XCTAssertTrue(controller.isVisible)
+        XCTAssertEqual(model.conversation?.id, saved.id)
+        sendKey("\u{1b}", code: 53, to: window)
+        XCTAssertFalse(controller.isVisible)
+        controller.open(previousApplication: nil)
+        XCTAssertEqual(model.conversation?.id, saved.id)
+        XCTAssertTrue(controller.isVisible)
     }
 
     func testCancelEditingReturnsToTheOriginalResult() throws {
@@ -195,7 +171,7 @@ final class NavigationTests: XCTestCase {
             XCTAssertEqual(model.errorMessage, "Original error")
             XCTAssertEqual(model.actionErrorMessage, "Original action error")
             XCTAssertEqual(window.title, "Original title")
-            XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, "edit")
+            XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, "composer")
             XCTAssertFalse(model.canUseResponse)
             XCTAssertFalse(model.isGenerating)
             sendKey("\u{1b}", code: 53, to: window)
@@ -203,37 +179,23 @@ final class NavigationTests: XCTestCase {
         }
     }
 
-    func testEditingReturnSurvivesOpeningAndEditingAHistoryEntry() throws {
+    func testHistoryEscapePreservesAnEditDraftBeforeOpeningAnotherConversation() throws {
         let model = FloaterState(provider: TestProvider())
         let original = HistoryEntry(request: PromptRequest(prompt: "Original prompt"), response: "Original result")
-        let saved = HistoryEntry(request: PromptRequest(prompt: "Saved prompt"), response: "Saved result")
         model.restore(original)
         let controller = FloatingPanelController(state: model)
         controller.show(previousApplication: nil)
         let window = try XCTUnwrap(controller.window)
         defer { controller.hide() }
-        settle(window)
         sendKey("e", code: 14, modifiers: .command, to: window)
-        let prompt = try XCTUnwrap(textViews(in: window.contentView!).first)
-        prompt.selectAll(nil)
-        prompt.insertText("Changed draft", replacementRange: prompt.selectedRange())
-        settle(window)
+        model.prompt = "Changed draft"
         sendKey("h", code: 4, modifiers: .command, to: window)
-        controller.openHistoryEntry(saved)
-        settle(window)
-        sendKey("e", code: 14, modifiers: .command, to: window)
         sendKey("\u{1b}", code: 53, to: window)
-        XCTAssertEqual(model.currentRequest, saved.request)
-        XCTAssertEqual(model.response, saved.response)
-        sendKey("\u{1b}", code: 53, to: window)
-        XCTAssertTrue(controller.isShowingHistory)
-        sendKey("\u{1b}", code: 53, to: window)
-        XCTAssertNil(model.currentRequest)
-        XCTAssertEqual(textViews(in: window.contentView!).first?.string, "Changed draft")
+        XCTAssertEqual(model.screen, .newRequest)
+        XCTAssertEqual(model.prompt, "Changed draft")
         sendKey("\u{1b}", code: 53, to: window)
         XCTAssertTrue(controller.isVisible)
-        XCTAssertEqual(model.currentRequest, original.request)
-        XCTAssertEqual(model.response, original.response)
+        XCTAssertEqual(model.conversation?.id, original.id)
     }
 
     func testNewAndRunDiscardThePreviousEditingResult() throws {
@@ -333,7 +295,7 @@ final class NavigationTests: XCTestCase {
                 if resultsMode {
                     XCTAssertEqual(model.currentRequest, entry.request)
                     XCTAssertEqual(model.response, entry.response)
-                    XCTAssertEqual((window.firstResponder as? NSButton)?.accessibilityLabel(), "Copy")
+                    XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, "composer")
                 } else {
                     XCTAssertNil(model.currentRequest)
                     XCTAssertEqual(textViews(in: window.contentView!).filter { !$0.isFieldEditor }.map(\.string), ["Draft prompt\n\nDraft input"])
@@ -386,8 +348,7 @@ final class NavigationTests: XCTestCase {
         settle(window)
         XCTAssertLessThanOrEqual(window.frame.height, FloaterPanelLayout.maximumHeight)
 
-        sendKey("\t", code: 48, modifiers: .option, to: window)
-        sendKey("\r", code: 36, to: window)
+        sendKey("e", code: 14, modifiers: .command, to: window)
         XCTAssertNil(model.currentRequest)
         let editors = textViews(in: window.contentView!)
         XCTAssertEqual(editors.map(\.string), [request.prompt])

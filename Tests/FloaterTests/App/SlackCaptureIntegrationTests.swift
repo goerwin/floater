@@ -80,7 +80,8 @@ final class SlackCaptureIntegrationTests: XCTestCase {
 private final class SlackCaptureProvider: AIProvider {
     var prompt: String?
 
-    func generate(_ request: PromptRequest, onUpdate: @MainActor (String) -> Void) async throws {
+    func generate(messages: [ChatMessage], onUpdate: @MainActor (String) -> Void) async throws {
+        let request = PromptRequest(prompt: messages.last?.content ?? "")
         prompt = request.prompt
         onUpdate("Captured")
     }

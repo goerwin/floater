@@ -8,6 +8,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     private let historyStore: HistoryStore
     private let settings: AppSettings
     private let accessibility: AccessibilityAccess
+    private let sourceApplication: @MainActor () -> NSRunningApplication?
     private let captureTarget: @MainActor (NSRunningApplication) -> any TextPasteTarget
     private let readFocusedField: @MainActor (NSRunningApplication) -> FieldCapture
     private let expandSelection: @MainActor (NSRunningApplication) async -> FieldCapture?
@@ -27,6 +28,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     init(
         state: FloaterState, historyStore: HistoryStore = HistoryStore(fileURL: nil),
         settings: AppSettings = AppSettings(), accessibility: AccessibilityAccess = AccessibilityAccess(),
+        sourceApplication: @escaping @MainActor () -> NSRunningApplication? = { NSWorkspace.shared.frontmostApplication },
         captureTarget: @escaping @MainActor (NSRunningApplication) -> any TextPasteTarget = {
             BackgroundTextReplacer.capture(in: $0)
         },
@@ -47,6 +49,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         self.historyStore = historyStore
         self.settings = settings
         self.accessibility = accessibility
+        self.sourceApplication = sourceApplication
         self.captureTarget = captureTarget
         self.readFocusedField = readFocusedField
         self.activateForCapture = activateForCapture
@@ -78,7 +81,8 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
 
     func open(previousApplication: NSRunningApplication?) {
         if panel == nil {
-            showNewRequest(previousApplication: previousApplication)
+            rememberTarget(in: previousApplication)
+            showPanel()
         } else {
             showPanel()
         }
@@ -87,6 +91,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     private func showPanel() {
         accessibility.refresh()
         ensureActiveObserver()
+        if NSApp.isHidden { NSApp.unhideWithoutActivation() }
 
         let panel = panel ?? makePanel()
         fitPanelToContent()
@@ -122,6 +127,8 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     func hide() {
         rememberHistoryFocus()
         panel?.orderOut(nil)
+        // Launchers can activate the app even though the panel is nonactivating.
+        if NSApp.isActive { NSApp.hide(nil) }
     }
 
     var isVisible: Bool { panel?.isVisible == true }
@@ -140,6 +147,14 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
 
     func openHistoryEntry(_ entry: HistoryEntry) {
         rememberHistoryFocus()
+        if entry.id != state.conversation?.id {
+            let application = sourceApplication()
+            if let application, application.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+                rememberTarget(in: application)
+            } else {
+                rememberTarget(in: previousApplication)
+            }
+        }
         state.openHistoryEntry(entry)
         showPanel()
     }
@@ -151,7 +166,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
 
     func copyAndDismiss() {
         guard state.canUseResponse else { return }
-        writeToPasteboard(state.response)
+        writeToPasteboard(state.responseForActions)
         hide()
     }
 
@@ -162,13 +177,13 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         state.setActionError(nil)
         accessibility.refresh()
         guard accessibility.isGranted else {
-            writeToPasteboard(state.response)
+            writeToPasteboard(state.responseForActions)
             state.setActionError("Allow Floater in System Settings > Privacy & Security > Accessibility, then try Replace again. The result is copied.")
             return
         }
         let target = replacementTarget ?? captureTarget(application)
         replacementTarget = target
-        let response = state.response
+        let response = state.responseForActions
         let allowWholeField = settings.replaceWholeFieldWhenUnselected
         let selectionOnly = state.currentRequest == selectionOnlyRequest
         isReplacing = true

@@ -1,11 +1,13 @@
 import AppKit
 import FloaterCore
+import OSLog
 
 @MainActor
 final class LlamaCPPProvider: AIProvider {
     static let repository = "google/gemma-4-E4B-it-qat-q4_0-gguf"
     static let modelFile = "gemma-4-E4B_q4_0-it.gguf"
     private static let endMarker = " [end of text]"
+    private static let logger = Logger(subsystem: "com.goerwin.Floater", category: "ModelRunner")
     // Gemma's text-only format omits the token that enables thinking.
     private static let chatTemplate = #"""
     {{- bos_token -}}
@@ -19,6 +21,7 @@ final class LlamaCPPProvider: AIProvider {
 
     private let executableURL: URL?
     private let modelURL: URL?
+    var compactionChunkSize: Int { 3000 }
 
     var preparationMessage: String {
         cachedModelURL == nil ? "Downloading Gemma 4 E4B on first use…" : "Preparing Gemma 4 E4B…"
@@ -29,8 +32,10 @@ final class LlamaCPPProvider: AIProvider {
         self.modelURL = modelURL
     }
 
-    func generate(_ request: PromptRequest, onUpdate: @MainActor (String) -> Void) async throws {
+    func generate(messages: [ChatMessage], onUpdate: @MainActor (String) -> Void) async throws {
         try Task.checkCancellation()
+        let messages = ChatMessage.context(messages)
+        guard let prompt = messages.last, prompt.role == .user else { throw ChatGenerationError.emptyResponse }
         guard let executable = executableURL ?? Self.homebrewExecutable,
               FileManager.default.isExecutableFile(atPath: executable.path) else {
             throw GenerationError.failed("Install llama.cpp with Homebrew to use Gemma: brew install llama.cpp")
@@ -43,7 +48,21 @@ final class LlamaCPPProvider: AIProvider {
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let promptFile = directory.appendingPathComponent("prompt.txt")
-        try Data(request.prompt.utf8).write(to: promptFile, options: .atomic)
+        try Data(prompt.content.utf8).write(to: promptFile, options: .atomic)
+        var historyTemplate: URL?
+        if messages.count > 1 {
+            let history = messages.dropLast().map { ["role": $0.role.rawValue, "content": $0.content] }
+            let encoder = JSONEncoder()
+            // JSON's optional slash escape is not a valid Jinja string escape.
+            encoder.outputFormatting = .withoutEscapingSlashes
+            let data = try encoder.encode(history)
+            let json = String(decoding: data, as: UTF8.self)
+            let template = "{% set previous_messages = \(json) %}\n" + Self.chatTemplate
+                .replacingOccurrences(of: "in messages", with: "in previous_messages + messages")
+            let file = directory.appendingPathComponent("conversation.jinja")
+            try Data(template.utf8).write(to: file, options: .atomic)
+            historyTemplate = file
+        }
         let outputFile = directory.appendingPathComponent("response.txt")
         let errorFile = directory.appendingPathComponent("error.txt")
         FileManager.default.createFile(atPath: outputFile.path, contents: nil)
@@ -59,7 +78,7 @@ final class LlamaCPPProvider: AIProvider {
 
         let process = Process()
         process.executableURL = executable
-        process.arguments = arguments(promptFile: promptFile)
+        process.arguments = arguments(promptFile: promptFile, historyTemplate: historyTemplate)
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = output
         process.standardError = errors
@@ -96,18 +115,23 @@ final class LlamaCPPProvider: AIProvider {
         if let chunk = try reader.readToEnd() { bytes.append(chunk) }
         try Task.checkCancellation()
 
+        let diagnostic = (try? String(contentsOf: errorFile, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if diagnostic.localizedCaseInsensitiveContains("exceeds the context")
+            || diagnostic.localizedCaseInsensitiveContains("context size exceeded")
+            || diagnostic.localizedCaseInsensitiveContains("context window is full")
+            || diagnostic.localizedCaseInsensitiveContains("prompt is too long") {
+            throw ChatGenerationError.contextLimit
+        }
         guard process.terminationStatus == 0 else {
-            let diagnostic = (try? String(contentsOf: errorFile, encoding: .utf8))?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            throw GenerationError.failed(
-                diagnostic.isEmpty ? "Gemma could not finish this request." : "Gemma could not finish this request. \(diagnostic.suffix(2000))"
-            )
+            Self.logger.error("llama-completion failed with exit status \(process.terminationStatus).")
+            throw ChatGenerationError.runnerFailed
         }
         guard let text = String(data: bytes, encoding: .utf8) else {
             throw GenerationError.failed("Gemma returned unreadable text. Try again.")
         }
         guard text.trimmingCharacters(in: .newlines).hasSuffix(Self.endMarker) else {
-            throw GenerationError.failed("Gemma reached its response or context limit. Shorten the prompt and try again.")
+            throw ChatGenerationError.failed("Gemma reached its response or context limit. Use Compact for a long conversation, or Retry for another attempt.")
         }
         let response = Self.responseText(text)
         guard !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -116,14 +140,19 @@ final class LlamaCPPProvider: AIProvider {
         if response != previousResponse { onUpdate(response) }
     }
 
-    private func arguments(promptFile: URL) -> [String] {
+    private func arguments(promptFile: URL, historyTemplate: URL?) -> [String] {
         var arguments = [
             "--conversation", "--single-turn", "--jinja",
-            "--chat-template", Self.chatTemplate, "--temp", "0",
+            "--temp", "0",
             "--no-display-prompt", "--simple-io", "--color", "off", "--log-colors", "off",
             "--no-perf", "--log-verbosity", "1", "--no-escape", "--no-context-shift",
             "--ctx-size", "8192", "--predict", "4096", "--file", promptFile.path
         ]
+        if let historyTemplate {
+            arguments += ["--chat-template-file", historyTemplate.path]
+        } else {
+            arguments += ["--chat-template", Self.chatTemplate]
+        }
         if let model = cachedModelURL {
             arguments += ["--model", model.path, "--offline"]
         } else {

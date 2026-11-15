@@ -72,9 +72,10 @@ struct HistoryList: NSViewRepresentable {
             let view = tableView.makeView(withIdentifier: identifier, owner: nil) as? RowView ?? RowView()
             view.identifier = identifier
             let entry = list.entries[row]
-            view.title.stringValue = entry.title
-            view.date.stringValue = entry.createdAt.formatted(.dateTime.month(.abbreviated).day().hour().minute())
-            view.preview.stringValue = entry.response.replacingOccurrences(of: "\n", with: " ")
+            for (field, text) in [(view.title, entry.title), (view.preview, entry.response)] {
+                field.stringValue = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            }
+            view.date.stringValue = entry.updatedAt.formatted(.dateTime.month(.abbreviated).day().hour().minute())
             return view
         }
 
@@ -127,11 +128,16 @@ struct HistoryList: NSViewRepresentable {
             title.font = .systemFont(ofSize: 13, weight: .medium)
             date.font = .systemFont(ofSize: 11)
             date.textColor = .secondaryLabelColor
+            date.setContentCompressionResistancePriority(.required, for: .horizontal)
+            date.setContentHuggingPriority(.required, for: .horizontal)
             preview.font = .systemFont(ofSize: 12)
             preview.textColor = .secondaryLabelColor
-            for field in [title, preview] {
+            for field in [title, date, preview] {
+                field.usesSingleLineMode = true
                 field.lineBreakMode = .byTruncatingTail
                 field.maximumNumberOfLines = 1
+            }
+            for field in [title, preview] {
                 field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
             }
             let heading = NSStackView(views: [title, date])

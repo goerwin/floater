@@ -13,9 +13,10 @@ Requires macOS 26 or later. Gemma uses llama.cpp; Apple Intelligence requires a 
 - **Floating window:** stays above other apps and can be dragged anywhere.
 - **New Request:** write one prompt containing your instructions and any text to process.
 - **Models:** choose a model from the menu bar. The submenu shows the current model, marks the selected option, and remembers your choice.
-- **Results:** preview the response as it streams. Once generation succeeds, copy the full response or a selection, or use Replace. Edit your request to run it again.
+- **Conversations:** continue chatting below each response. Enter sends; Shift+Enter adds a line. Stop interrupts a reply, and Retry replaces a stopped or failed attempt.
+- **Results:** stream replies with automatic scrolling that pauses while you read earlier text. Copy and Replace use the latest completed reply. Edit as New copies the original prompt into a fresh draft.
 - **Replace (Command+S):** paste over selected text in the previous app, or the whole field when nothing is selected. Keeps the result on your clipboard. Requires Accessibility permission.
-- **History:** search and reopen the latest 100 successful results, saved locally.
+- **History:** search and resume the latest 100 conversations, saved locally with their messages and unsent drafts.
 - **Updates:** use **Check for Updates...** in the menu to download and install new versions.
 - **Automation:** send requests through the CLI or `floater://` URLs. Skip chosen apps, or read the selected text in the app behind them.
 
@@ -26,6 +27,12 @@ make dev-app
 ```
 
 Use **New** to start a request, **Open** to return to the current window, and **History** to browse saved results.
+
+**Escape** hides the window and returns keyboard focus to the app you were using, while the model keeps generating. Use the menu bar's **Open** to return to the conversation. **New**, reopening the app icon, Edit as New, or opening a different saved conversation stops the current generation and preserves its partial reply. Conversations and their drafts survive restarting Floater.
+
+Follow-ups can change the task. Floater sends normal user and assistant messages without adding task instructions. Each CLI or URL request starts a fresh conversation. Replace keeps the source editor for the current conversation; reopening a different saved conversation captures the editor you came from.
+
+Models have a context limit. Floater never automatically drops or summarizes messages. Choose **Compact** to summarize earlier messages for the model when needed; recent messages stay in full, and the original conversation remains visible and saved. At the limit, compact the conversation or start a new one before continuing.
 
 Local builds use a trusted Apple Development certificate when available and otherwise use ad-hoc signing. The build checks certificate revocation because macOS can move apps signed with a revoked certificate to the Trash. To keep Accessibility permission across rebuilds, create a new Apple Development certificate in Xcode if your old one was revoked.
 
@@ -39,7 +46,7 @@ brew install llama.cpp
 
 The first Gemma request downloads Google's official 4-bit E4B model (about 5.2 GB) to the Hugging Face cache. Later requests use the cached model offline. Floater runs `llama-completion` for each request and releases it afterward; no background server stays running. Only the final answer appears in the result.
 
-Open Floater's menu and choose **Gemma 4 E4B → Apple Intelligence** to switch. Switching models applies to the next request, including requests from the CLI and URLs.
+Open Floater's menu and choose **Gemma 4 E4B → Apple Intelligence** to switch. Switching models applies to the next reply, including follow-ups in existing conversations and requests from the CLI and URLs.
 
 ## Automation
 
