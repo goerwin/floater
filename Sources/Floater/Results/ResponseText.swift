@@ -21,6 +21,8 @@ struct ResponseText: NSViewRepresentable {
 }
 
 final class ResponseScrollView: NSScrollView {
+    override var acceptsFirstResponder: Bool { true }
+
     var onCopyMessage: (String) -> Void = { _ in }
     private let messagesView = MessageListView()
     private var bubbles: [UUID: MessageBubble] = [:]
@@ -37,6 +39,7 @@ final class ResponseScrollView: NSScrollView {
         autohidesScrollers = true
         scrollerStyle = .overlay
         identifier = NSUserInterfaceItemIdentifier("responseText")
+        setAccessibilityLabel("Conversation")
         documentView = messagesView
         contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(
@@ -45,6 +48,21 @@ final class ResponseScrollView: NSScrollView {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    // Keep focus here instead of forwarding it to the document view.
+    override func becomeFirstResponder() -> Bool { true }
+
+    override func keyDown(with event: NSEvent) {
+        let modifiers = event.modifierFlags.intersection([.shift, .command, .option, .control])
+        guard modifiers.isEmpty, [125, 126].contains(event.keyCode) else {
+            super.keyDown(with: event)
+            return
+        }
+        var offset = contentView.bounds.origin
+        offset.y = min(bottomOffset.y, max(0, offset.y + (event.keyCode == 125 ? verticalLineScroll : -verticalLineScroll)))
+        contentView.scroll(to: offset)
+        reflectScrolledClipView(contentView)
+    }
 
     func update(messages: [ChatMessage], preparationMessage: String) {
         updateDepth += 1

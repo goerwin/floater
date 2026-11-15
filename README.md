@@ -13,7 +13,7 @@ Requires macOS 26 or later. Gemma uses llama.cpp; Apple Intelligence requires a 
 - **Floating window:** stays above other apps and can be dragged anywhere.
 - **New Request:** write one prompt containing your instructions and any text to process.
 - **Models:** choose a model from the menu bar. The submenu shows the current model, marks the selected option, and remembers your choice.
-- **Conversations:** continue chatting below each response. Enter sends; Shift+Enter adds a line. Stop interrupts a reply, and Retry replaces a stopped or failed attempt.
+- **Conversations:** continue chatting below each response. Stop interrupts a reply, and Retry replaces a stopped or failed attempt.
 - **Results:** stream replies with automatic scrolling that pauses while you read earlier text. Copy and Replace use the latest completed reply. Edit as New copies the original prompt into a fresh draft.
 - **Replace (Command+S):** paste over selected text in the previous app, or the whole field when nothing is selected. Keeps the result on your clipboard. Requires Accessibility permission.
 - **History:** search and resume the latest 100 conversations, saved locally with their messages and unsent drafts.

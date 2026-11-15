@@ -10,6 +10,33 @@ final class ResultsScrollingTests: XCTestCase {
         MainActor.assumeIsolated { _ = NSApplication.shared }
     }
 
+    func testConversationCanBeFocusedFromComposerAndScrolledWithArrowKeys() throws {
+        let state = FloaterState(provider: TestProvider())
+        state.restore(HistoryEntry(
+            request: PromptRequest(prompt: "A long conversation"),
+            response: String(repeating: "A line in the conversation.\n", count: 100)
+        ))
+        let window = makeWindow(state: state)
+        defer { window.close() }
+        let composer = try XCTUnwrap(window.firstResponder as? NSTextView)
+        let scroll = try XCTUnwrap(descendants(of: ResponseScrollView.self, in: window.contentView!).first)
+        let bottom = scroll.contentView.bounds.minY
+        XCTAssertGreaterThan(bottom, 0)
+
+        sendKey("\u{19}", code: 48, modifiers: .shift, to: window)
+        let focusedView = try XCTUnwrap(window.firstResponder as? NSView)
+        XCTAssertTrue(focusedView.isDescendant(of: scroll), "Shift+Tab should focus the conversation from the composer")
+        sendKey("\u{f700}", code: 126, to: window)
+        let scrolledUp = scroll.contentView.bounds.minY
+        XCTAssertLessThan(scrolledUp, bottom, "Up Arrow should scroll to earlier messages")
+        sendKey("\u{f701}", code: 125, to: window)
+        XCTAssertGreaterThan(scroll.contentView.bounds.minY, scrolledUp, "Down Arrow should scroll to later messages")
+
+        sendKey("\t", code: 48, to: window)
+        XCTAssertTrue(window.firstResponder === composer, "Tab should return to the composer")
+        XCTAssertEqual(state.followUp, "")
+    }
+
     func testWaitingBubbleKeepsItsSizeAndReplacesThePlaceholderWhenTheReplyArrives() async throws {
         let provider = StreamingTestProvider()
         let state = FloaterState(provider: provider)

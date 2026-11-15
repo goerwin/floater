@@ -8,7 +8,6 @@ struct MultilineInput: View {
     let isFocused: Bool
     var prefersInitialFocus = false
     var identifier: String?
-    var sendsOnReturn = false
     var visibleLineCount: Int?
     var trailingContentWidth: CGFloat = 0
     let onFocus: () -> Void
@@ -21,7 +20,6 @@ struct MultilineInput: View {
             isFocused: isFocused,
             prefersInitialFocus: prefersInitialFocus,
             identifier: identifier,
-            sendsOnReturn: sendsOnReturn,
             visibleLineCount: visibleLineCount,
             trailingContentWidth: trailingContentWidth,
             onFocus: onFocus,
@@ -52,7 +50,6 @@ private struct NativeInput: NSViewRepresentable {
     let isFocused: Bool
     let prefersInitialFocus: Bool
     let identifier: String?
-    let sendsOnReturn: Bool
     let visibleLineCount: Int?
     let trailingContentWidth: CGFloat
     let onFocus: () -> Void
@@ -101,7 +98,6 @@ private struct NativeInput: NSViewRepresentable {
         }
         view.onFocus = onFocus
         view.onSubmit = onSubmit
-        view.sendsOnReturn = sendsOnReturn
         let focusChanged = view.wantsFocus != isFocused || view.prefersInitialFocus != prefersInitialFocus
         view.wantsFocus = isFocused
         view.prefersInitialFocus = prefersInitialFocus
@@ -165,7 +161,6 @@ private final class InputTextView: NSTextView {
     var prefersInitialFocus = false
     var onFocus: (() -> Void)?
     var onSubmit: (() -> Void)?
-    var sendsOnReturn = false
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -192,24 +187,18 @@ private final class InputTextView: NSTextView {
 
     override func keyDown(with event: NSEvent) {
         let modifiers = event.modifierFlags.intersection([.shift, .command, .option, .control])
-        if event.keyCode == 48 {
-            if modifiers.isEmpty || modifiers == .shift {
-                insertTab(nil)
-            } else {
-                super.keyDown(with: event)
-            }
-        } else if event.keyCode == 36 || event.keyCode == 76 {
-            if modifiers.isEmpty, sendsOnReturn, !hasMarkedText() {
-                onSubmit?()
-            } else if modifiers.isEmpty || modifiers == .shift {
-                insertNewline(nil)
-            } else if modifiers == .command {
-                onSubmit?()
-            } else {
-                super.keyDown(with: event)
-            }
+        if [36, 76].contains(event.keyCode), modifiers.isEmpty, !hasMarkedText() {
+            onSubmit?()
         } else {
             super.keyDown(with: event)
         }
+    }
+
+    override func insertTab(_ sender: Any?) {
+        window?.selectNextKeyView(sender)
+    }
+
+    override func insertBacktab(_ sender: Any?) {
+        window?.selectPreviousKeyView(sender)
     }
 }

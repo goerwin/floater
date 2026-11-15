@@ -187,34 +187,31 @@ final class ResultsViewTests: XCTestCase {
         XCTAssertFalse(replace.isEnabled)
     }
 
-    func testOptionTabTraversesComposerAndActionsInBothDirections() throws {
+    func testTabAndShiftTabNavigateFromComposerWithoutChangingDraft() throws {
         let model = FloaterState(provider: TestProvider())
         model.restore(HistoryEntry(request: PromptRequest(prompt: "Prompt"), response: "Result"))
         model.setCanReplace(true)
         let window = makeWindow(state: model)
         defer { window.close() }
-        let order = ["composer", "copy", "edit", "replace", "dismiss", "history", "new"]
-        for identifier in order.dropFirst() + ["composer"] {
-            window.sendEvent(keyEvent("\t", code: 48, modifiers: .option, window: window))
-            XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, identifier)
-        }
-        for identifier in order.dropFirst().reversed() + ["composer"] {
-            sendKey("\t", code: 48, modifiers: [.option, .shift], to: window)
-            XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, identifier)
-        }
+        model.followUp = "A draft"
+        settle(window)
+        let composer = try XCTUnwrap(window.firstResponder as? NSTextView)
+        sendKey("\t", code: 48, to: window)
+        XCTAssertFalse(window.firstResponder === composer)
+        sendKey("\u{19}", code: 48, modifiers: .shift, to: window)
+        XCTAssertTrue(window.firstResponder === composer)
+        XCTAssertEqual(model.followUp, "A draft")
     }
 
-    func testPlainTabStaysInTheComposer() throws {
+    func testOptionTabUsesNativeTextEditingInTheComposer() throws {
         let model = FloaterState(provider: TestProvider())
         model.restore(HistoryEntry(request: PromptRequest(prompt: "Prompt"), response: "Result"))
         let window = makeWindow(state: model)
         defer { window.close() }
         let editor = try XCTUnwrap(window.firstResponder as? NSTextView)
-        sendKey("\t", code: 48, to: window)
+        sendKey("\t", code: 48, modifiers: .option, to: window)
         XCTAssertTrue(window.firstResponder === editor)
         XCTAssertEqual(model.followUp, "\t")
-        sendKey("\t", code: 48, modifiers: .option, to: window)
-        XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, "copy")
     }
 
     func testResultsActionsActivateWithEnterAndSpace() throws {

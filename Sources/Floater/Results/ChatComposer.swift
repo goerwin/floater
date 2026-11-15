@@ -8,7 +8,7 @@ struct ChatComposer: View {
         MultilineInput(
             text: $state.followUp, placeholder: "Continue the conversation…", label: "Message",
             isFocused: focusedControl == .composer, prefersInitialFocus: true,
-            identifier: PanelControl.composer.rawValue, sendsOnReturn: true, visibleLineCount: 3,
+            identifier: PanelControl.composer.rawValue, visibleLineCount: 3,
             trailingContentWidth: state.isGenerating || state.canRetry ? 70 : 36,
             onFocus: { if focusedControl != .composer { focusedControl = .composer } },
             onSubmit: state.sendFollowUp

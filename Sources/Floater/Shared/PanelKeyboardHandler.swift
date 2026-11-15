@@ -6,7 +6,7 @@ struct PanelKeyboardHandler: NSViewRepresentable {
 
     @discardableResult
     static func moveFocus(
-        in window: NSWindow, identifiers: [String], backwards: Bool, fallback: String? = nil
+        in window: NSWindow, identifiers: [String], backwards: Bool
     ) -> String? {
         guard let root = window.contentView else { return nil }
         let controls = identifiers.compactMap { identifier in
@@ -20,7 +20,6 @@ struct PanelKeyboardHandler: NSViewRepresentable {
             ? controls.first(where: { ($0 as? NSControl)?.currentEditor() === responder })
             : responder as? NSView
         let index = controls.firstIndex(where: { $0 === current })
-            ?? controls.firstIndex(where: { $0.identifier?.rawValue == fallback })
         let destination = index.map { controls[($0 + (backwards ? controls.count - 1 : 1)) % controls.count] }
             ?? (backwards ? controls.last! : controls.first!)
         guard window.makeFirstResponder(destination) else { return nil }

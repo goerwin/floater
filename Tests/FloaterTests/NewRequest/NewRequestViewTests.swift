@@ -28,8 +28,8 @@ final class NewRequestViewTests: XCTestCase {
         model.restore(HistoryEntry(request: PromptRequest(prompt: "Prompt\n\nInput", title: "Title"), response: "Result"))
         let window = makeWindow(state: model)
         defer { window.close() }
-        sendKey("\t", code: 48, modifiers: [.option, .shift], to: window)
-        XCTAssertEqual((window.firstResponder as? NSButton)?.accessibilityLabel(), "New")
+        let new = try XCTUnwrap(buttons(in: window.contentView!).first { $0.accessibilityLabel() == "New" })
+        window.makeFirstResponder(new)
         sendKey("\r", code: 36, to: window)
         XCTAssertNil(model.currentRequest)
         XCTAssertEqual(textViews(in: window.contentView!).map(\.string), [""])
@@ -41,21 +41,21 @@ final class NewRequestViewTests: XCTestCase {
         XCTAssertTrue(window.firstResponder === prompt)
     }
 
-    func testTabAndShiftTabStayInsideEditors() throws {
+    func testTabAndShiftTabNavigateWithoutChangingPrompt() throws {
         let window = makeNewRequest()
         defer { window.close() }
         for editor in textViews(in: window.contentView!) {
             window.makeFirstResponder(editor)
             settle(window)
             sendKey("\t", code: 48, to: window)
+            XCTAssertFalse(window.firstResponder === editor)
+            sendKey("\u{19}", code: 48, modifiers: .shift, to: window)
             XCTAssertTrue(window.firstResponder === editor)
-            sendKey("\t", code: 48, modifiers: .shift, to: window)
-            XCTAssertTrue(window.firstResponder === editor)
-            XCTAssertEqual(editor.string, "\t\t")
+            XCTAssertEqual(editor.string, "")
         }
     }
 
-    func testOptionTabAndOptionShiftTabMoveBetweenPromptAndActionsOnce() throws {
+    func testTabAndShiftTabMoveBetweenPromptAndActionsOnce() throws {
         var dismissals = 0
         var requests: [PromptRequest] = []
         let window = makeNewRequest(onSubmit: { requests.append($0) }, onDismiss: { dismissals += 1 })
@@ -67,17 +67,17 @@ final class NewRequestViewTests: XCTestCase {
         window.makeFirstResponder(prompt)
         prompt.insertText("Summarize", replacementRange: prompt.selectedRange())
         settle(window)
-        sendKey("\t", code: 48, modifiers: .option, to: window)
+        sendKey("\t", code: 48, to: window)
         XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, "dismiss")
-        sendKey("\t", code: 48, modifiers: [.option, .shift], to: window)
+        sendKey("\u{19}", code: 48, modifiers: .shift, to: window)
         XCTAssertTrue(window.firstResponder === prompt)
-        sendKey("\t", code: 48, modifiers: .option, to: window)
+        sendKey("\t", code: 48, to: window)
         sendKey("\r", code: 36, to: window)
         XCTAssertEqual(dismissals, 1)
-        sendKey("\t", code: 48, modifiers: .option, to: window)
+        sendKey("\t", code: 48, to: window)
         sendKey("\r", code: 36, to: window)
         XCTAssertEqual(requests, [PromptRequest(prompt: "Summarize")])
-        sendKey("\t", code: 48, modifiers: [.option, .shift], to: window)
+        sendKey("\u{19}", code: 48, modifiers: .shift, to: window)
         sendKey("\r", code: 36, to: window)
         XCTAssertEqual(dismissals, 2)
         XCTAssertEqual(requests.count, 1)
@@ -99,27 +99,26 @@ final class NewRequestViewTests: XCTestCase {
         }
     }
 
-    func testEnterAndShiftEnterPreserveNewlinesWhenPromptIsSubmitted() throws {
-        var requests: [PromptRequest] = []
-        let window = makeNewRequest(onSubmit: { requests.append($0) })
-        defer { window.close() }
-        let editors = textViews(in: window.contentView!)
-        for editor in editors {
-            window.makeFirstResponder(editor)
+    func testEnterSubmitsThePromptAndShiftEnterAddsANewline() throws {
+        for (characters, code) in [("\r", UInt16(36)), ("\u{3}", UInt16(76))] {
+            var requests: [PromptRequest] = []
+            let window = makeNewRequest(onSubmit: { requests.append($0) })
+            defer { window.close() }
+            let editor = try XCTUnwrap(window.firstResponder as? NSTextView)
+            sendKey(characters, code: code, to: window)
+            XCTAssertTrue(requests.isEmpty)
+            XCTAssertEqual(editor.string, "")
+
             editor.insertText("First", replacementRange: editor.selectedRange())
             settle(window)
-            sendKey("\r", code: 36, to: window)
+            sendKey("\r", code: 36, modifiers: .shift, to: window)
             XCTAssertTrue(requests.isEmpty)
             editor.insertText("Second", replacementRange: editor.selectedRange())
             settle(window)
-            sendKey("\r", code: 36, modifiers: .shift, to: window)
-            editor.insertText("Third", replacementRange: editor.selectedRange())
-            settle(window)
-            XCTAssertEqual(editor.string, "First\nSecond\nThird")
+            sendKey(characters, code: code, to: window)
+            XCTAssertEqual(requests, [PromptRequest(prompt: "First\nSecond")])
+            XCTAssertEqual(editor.string, "First\nSecond")
         }
-        XCTAssertTrue(requests.isEmpty)
-        sendKey("\r", code: 36, modifiers: .command, to: window)
-        XCTAssertEqual(requests, [PromptRequest(prompt: "First\nSecond\nThird")])
     }
 
     func testPromptEditorGrowsWithLongText() throws {

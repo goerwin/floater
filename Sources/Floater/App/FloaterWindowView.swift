@@ -118,13 +118,6 @@ struct FloaterWindowView: View {
 
     private func handleKeyDown(_ event: NSEvent, window: NSWindow) -> Bool {
         let modifiers = event.modifierFlags.intersection([.shift, .command, .option, .control])
-        if event.keyCode == 48, modifiers.subtracting([.option, .shift]).isEmpty {
-            if !modifiers.contains(.option), let editor = window.firstResponder as? NSTextView, editor.isEditable {
-                return false
-            }
-            moveFocus(backwards: modifiers.contains(.shift), in: window)
-            return true
-        }
         if event.keyCode == 53, modifiers.isEmpty {
             onDismiss()
             return true
@@ -168,26 +161,6 @@ struct FloaterWindowView: View {
             return true
         default:
             return false
-        }
-    }
-
-    private func moveFocus(backwards: Bool, in window: NSWindow) {
-        let controls: [PanelControl]
-        if state.screen == .newRequest {
-            controls = [.prompt, .dismiss] + (state.canSubmit ? [.run] : []) + [.history, .new]
-        } else {
-            controls = [.composer]
-                + (state.isGenerating ? [.stop] : state.canRetry ? [.retry] : [])
-                + (state.canSend ? [.send] : [])
-                + (state.canUseResponse ? [.copy, .edit] : [.edit])
-                + (canReplace ? [.replace] : [])
-                + [.dismiss, .history, .new]
-        }
-        if let identifier = PanelKeyboardHandler.moveFocus(
-            in: window, identifiers: controls.map(\.rawValue), backwards: backwards,
-            fallback: focusedControl?.rawValue
-        ) {
-            focusedControl = PanelControl(rawValue: identifier)
         }
     }
 }
