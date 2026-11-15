@@ -204,7 +204,14 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         fallbackApplication: NSRunningApplication?,
         recentApplications: [NSRunningApplication] = []
     ) async {
-        guard let routedPrompt = PromptURL.parse(url) else { return }
+        let routedPrompt: RoutedPrompt
+        do {
+            guard let decoded = try PromptURL.decode(url) else { return }
+            routedPrompt = decoded
+        } catch {
+            fail(PromptRequest(prompt: "", title: "Invalid Request"), error.localizedDescription, application: fallbackApplication)
+            return
+        }
         let resolution = resolve(
             routedPrompt, fallback: fallbackApplication, recent: recentApplications
         )
@@ -213,7 +220,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
             return
         }
         await capture(
-            routedPrompt.request,
+            routedPrompt,
             application: resolution.application,
             considered: resolution.considered,
             ignoredAny: resolution.ignoredAny
@@ -439,11 +446,12 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     }
 
     private func capture(
-        _ request: PromptRequest,
+        _ routedPrompt: RoutedPrompt,
         application: NSRunningApplication?,
         considered: [TargetCandidate],
         ignoredAny: Bool
     ) async {
+        let request = routedPrompt.request
         guard let application, !application.isTerminated else {
             let named = considered.isEmpty ? [application].compactMap { $0 }.map(candidate) : considered
             fail(
@@ -499,9 +507,9 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
 
         switch outcome {
         case .selection(let text):
-            startCaptured(request, input: text, application: application, target: read.target, selectionOnly: true)
+            startCaptured(routedPrompt, input: text, application: application, target: read.target, selectionOnly: true)
         case .field(let text):
-            startCaptured(request, input: text, application: application, target: read.target, selectionOnly: false)
+            startCaptured(routedPrompt, input: text, application: application, target: read.target, selectionOnly: false)
         case .empty:
             fail(request, CaptureMessages.emptyField(for: candidate(application)), application: application)
         case .unreadable, .failed:
@@ -510,13 +518,19 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     }
 
     private func startCaptured(
-        _ request: PromptRequest,
+        _ routedPrompt: RoutedPrompt,
         input: String,
         application: NSRunningApplication,
         target: any TextPasteTarget,
         selectionOnly: Bool
     ) {
-        let captured = request.appending(input)
+        let captured: PromptRequest
+        do {
+            captured = try routedPrompt.resolving(input: input)
+        } catch {
+            fail(routedPrompt.request, error.localizedDescription, application: application)
+            return
+        }
         selectionOnlyRequest = selectionOnly ? captured : nil
         replacementTarget = target
         state.start(captured)

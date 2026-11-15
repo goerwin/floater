@@ -5,6 +5,66 @@ import XCTest
 
 @MainActor
 final class CaptureInputTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        MainActor.assumeIsolated { _ = NSApplication.shared }
+    }
+
+    func testTemplateCaptureSavesResolvedTextForRetryHistoryEditingAndFollowUps() async throws {
+        let app = try runningApp()
+        let store = HistoryStore(fileURL: nil)
+        let provider = TemplateProvider()
+        let model = FloaterState(provider: provider, historyStore: store)
+        let source = "  hello {{input}} & <code>\n"
+        let expected = "<user-text>\n" + source + "\n</user-text>"
+        var reads = 0
+        let controller = makeController(model: model, read: { _ in
+            reads += 1
+            return FieldCapture(
+                target: StubPasteTarget(selection: .selected), elementFound: true, isSecure: false,
+                selectedText: source, fieldValue: nil, selectionUnreadable: false
+            )
+        })
+        defer { controller.hide() }
+        let routed = try RoutedPrompt(
+            prompt: nil, template: "<user-text>\n{{input}}\n</user-text>", input: nil,
+            title: "Fix", previousProcessID: app.processIdentifier, captureInput: true
+        )
+        await controller.handle(try XCTUnwrap(PromptURL.makeURL(for: routed)), fallbackApplication: nil)
+        try await verifyResolvedLifecycle(model: model, provider: provider, store: store, expected: expected)
+        XCTAssertEqual(reads, 1)
+    }
+
+    func testResolvedTemplateSurvivesRetryHistoryEditingAndFollowUps() async throws {
+        let store = HistoryStore(fileURL: nil)
+        let provider = TemplateProvider()
+        let model = FloaterState(provider: provider, historyStore: store)
+        let template = try PromptTemplate("<user-text>\n{{input}}\n</user-text>")
+        let expected = "<user-text>\n  hello {{input}} & <code>\n\n</user-text>"
+        let rendered = try template.render(input: "  hello {{input}} & <code>\n")
+        model.start(PromptRequest(prompt: rendered, title: "Fix"))
+        try await verifyResolvedLifecycle(model: model, provider: provider, store: store, expected: expected)
+    }
+
+    func testInvalidTemplateURLShowsErrorWithoutReadingOrSaving() async throws {
+        let provider = CountingProvider()
+        let store = HistoryStore(fileURL: nil)
+        let model = FloaterState(provider: provider, historyStore: store)
+        let controller = makeController(model: model, read: { _ in
+            XCTFail("An invalid template must not capture text")
+            return FieldCapture(
+                target: StubPasteTarget(selection: .none), elementFound: false, isSecure: false,
+                selectedText: nil, fieldValue: nil, selectionUnreadable: false
+            )
+        })
+        defer { controller.hide() }
+        let url = try XCTUnwrap(URL(string: "floater://prompt?template=missing-marker&capture=1"))
+        await controller.handle(url, fallbackApplication: nil)
+        XCTAssertTrue(model.errorMessage?.contains("exactly one {{input}}") == true)
+        XCTAssertTrue(provider.requests.isEmpty)
+        XCTAssertTrue(store.entries.isEmpty)
+    }
+
     func testExpansionUsesTheConfirmedSelectionWithoutReadingItAgain() async throws {
         let app = try runningApp()
         let provider = CountingProvider()
@@ -262,6 +322,30 @@ final class CaptureInputTests: XCTestCase {
         XCTAssertEqual(provider.requests.map(\.prompt), ["Fix"])
     }
 
+    private func verifyResolvedLifecycle(
+        model: FloaterState, provider: TemplateProvider, store: HistoryStore, expected: String
+    ) async throws {
+        await waitUntil { !model.isGenerating }
+        XCTAssertEqual(provider.turns.first?.first?.content, expected)
+        model.retry()
+        await waitUntil { !model.isGenerating }
+        XCTAssertEqual(provider.turns.count, 2)
+        XCTAssertEqual(provider.turns.dropFirst().first?.first?.content, expected)
+        let saved = try XCTUnwrap(store.entries.first)
+        XCTAssertEqual(saved.request.prompt, expected)
+        let encoded = try JSONEncoder().encode(saved)
+        let restored = try JSONDecoder().decode(HistoryEntry.self, from: encoded)
+        let resumed = FloaterState(provider: provider, historyStore: store)
+        resumed.openHistoryEntry(restored)
+        XCTAssertEqual(resumed.currentRequest?.prompt, expected)
+        resumed.followUp = "Shorter {{input}}"
+        resumed.sendFollowUp()
+        await waitUntil { !resumed.isGenerating }
+        XCTAssertEqual(provider.turns.last?.last?.content, "Shorter {{input}}")
+        resumed.beginEditing()
+        XCTAssertEqual(resumed.prompt, expected)
+    }
+
     private func makeController(
         model: FloaterState,
         read: @escaping @MainActor (NSRunningApplication) -> FieldCapture,
@@ -286,7 +370,8 @@ final class CaptureInputTests: XCTestCase {
     }
 
     private func runningApp() throws -> NSRunningApplication {
-        try XCTUnwrap(runningApps(1).first)
+        let apps = try runningApps(1)
+        return try XCTUnwrap(apps.first)
     }
 
     private func runningApps(_ count: Int) throws -> [NSRunningApplication] {
@@ -304,6 +389,17 @@ final class CaptureInputTests: XCTestCase {
             bundleIdentifier: application.bundleIdentifier,
             isRunning: !application.isTerminated
         )
+    }
+}
+
+@MainActor
+private final class TemplateProvider: AIProvider {
+    var turns: [[ChatMessage]] = []
+
+    func generate(messages: [ChatMessage], onUpdate: @MainActor (String) -> Void) async throws {
+        turns.append(messages)
+        if turns.count == 1 { throw ChatGenerationError.failed("Try again") }
+        onUpdate("Done")
     }
 }
 

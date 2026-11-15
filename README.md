@@ -58,9 +58,20 @@ floater --prompt "Translate to Spanish: Hello, world"
 
 Use `--prompt -` to read the full prompt from standard input. Floater sends it as written, without adding tags or task instructions. Add any labels or delimiters you want to your prompt.
 
+Use `--prompt-template` to put supplied or captured text inside a caller-defined prompt. Include exactly one `{{input}}` marker and choose exactly one input source:
+
+```sh
+floater --prompt-template 'Translate into Spanish: <text>{{input}}</text>' --input 'Hello, world'
+floater --prompt-template 'Rewrite: <text>{{input}}</text>' --capture-input
+```
+
+Floater substitutes the input literally, once, preserving whitespace and tags. Markers inside the input are not expanded. Missing or repeated template markers, conflicting input sources, and blank input are errors. `--prompt` remains literal. A template or its input can be read from standard input with `-`; they cannot both use standard input. History, Retry, resumed conversations, and Edit as New use the completed prompt without recapturing text.
+
 Repeat `--ignore` with a bundle id to skip that app when choosing where to read and where Replace pastes. Floater remembers the last two other apps, so it can use the one behind an ignored app. Leave Floater running first, or it will not have seen that app.
 
 `--capture-input` appends the selected text, or the whole text when nothing is selected, to your prompt after a blank line. The captured text stays selected, so Replace swaps it. Reading and Replace both need Accessibility permission.
+
+In template mode, capture fills the input marker instead of appending text.
 
 Capture waits for macOS Accessibility notifications instead of fixed delays. The source app must expose its editor text; editors with text accessibility disabled need that mode enabled first.
 
@@ -74,9 +85,12 @@ You can also open a request from another app or workflow. Repeat `ignore` for ea
 ```text
 floater://prompt?prompt=Translate%20to%20Spanish%3A%20Hello%2C%20world
 floater://prompt?prompt=Rewrite%20this&ignore=com.example.launcher&capture=1
+floater://prompt?template=Rewrite%3A%20%7B%7Binput%7D%7D&capture=1
 ```
 
-Existing `--input` arguments and URL `input` parameters remain compatible: their text is appended after a blank line, with no tags. Explicit input takes precedence over capture. Older history entries combine their prompt and input in the same way when opened.
+The URL `template` parameter follows the same rules as `--prompt-template`: use it instead of `prompt`, with either `input` or `capture=1`.
+
+With plain prompts, `--input` arguments and URL `input` parameters remain compatible: their text is appended after a blank line, with no tags. Explicit input takes precedence over capture in this mode. Older history entries combine their prompt and input in the same way when opened.
 
 ## Releases
 

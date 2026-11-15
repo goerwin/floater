@@ -10,28 +10,29 @@ struct FloaterCLI {
 
         if arguments.contains("--help") || arguments.contains("-h") {
             print("""
-            Usage: floater --prompt <text> [--title <text>] [--ignore <bundle-id>]... [--capture-input]
+            Usage: floater --prompt <text> [--input <text>] [--capture-input] [--title <text>] [--ignore <bundle-id>]...
+                   floater --prompt-template <text> (--input <text> | --capture-input) [--title <text>] [--ignore <bundle-id>]...
 
-            Use --prompt - to read the full prompt from standard input.
+            Use - to read a prompt, template, or input from standard input.
+            Templates require exactly one {{input}} marker and one non-empty input source.
+            Input replaces the marker literally, once. Plain prompts remain literal.
             Repeat --ignore to skip those apps when choosing where to read and replace.
-            --capture-input appends selected text, or the focused field when nothing is selected.
-            Example: floater --prompt "Translate hola mundo into English." --title "Translation"
+            --capture-input reads selected text, or the focused field when nothing is selected.
+            Example: floater --prompt-template "Translate: {{input}}" --capture-input
             """)
             return
         }
 
         do {
-            let command = try parse(arguments)
-            let previousProcessID = NSWorkspace.shared.frontmostApplication?.processIdentifier
-            guard let url = PromptURL.makeURL(
-                for: command.request,
-                previousProcessID: previousProcessID,
-                ignoredBundleIdentifiers: command.ignoredBundleIdentifiers,
-                captureInput: command.captureInput
-            ) else {
+            let routed = try PromptCommand.parse(
+                arguments,
+                previousProcessID: NSWorkspace.shared.frontmostApplication?.processIdentifier
+            ) {
+                String(decoding: FileHandle.standardInput.readDataToEndOfFile(), as: UTF8.self)
+            }
+            guard let url = PromptURL.makeURL(for: routed) else {
                 throw CLIError.invalidRequest
             }
-
             guard NSWorkspace.shared.open(url) else {
                 throw CLIError.appNotAvailable
             }
@@ -40,109 +41,18 @@ struct FloaterCLI {
             exit(EXIT_FAILURE)
         }
     }
-
-    private struct ParsedCommand {
-        var request: PromptRequest
-        var ignoredBundleIdentifiers: [String]
-        var captureInput: Bool
-    }
-
-    private static func parse(_ arguments: [String]) throws -> ParsedCommand {
-        var prompt: String?
-        var input = ""
-        var includesInput = false
-        var title: String?
-        var ignoredBundleIdentifiers: [String] = []
-        var captureInput = false
-        var index = 0
-
-        while index < arguments.count {
-            let argument = arguments[index]
-            let parts = argument.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
-            let option = String(parts[0])
-
-            if option == "--capture-input" {
-                guard parts.count == 1 else { throw CLIError.unexpectedValue(option) }
-                captureInput = true
-                index += 1
-                continue
-            }
-
-            guard option == "--prompt" || option == "--input" || option == "--title" || option == "--ignore" else {
-                throw CLIError.unknownOption(option)
-            }
-
-            let value: String
-            if parts.count == 2 {
-                value = String(parts[1])
-            } else {
-                index += 1
-                guard index < arguments.count else {
-                    throw CLIError.missingValue(option)
-                }
-                value = arguments[index]
-            }
-            if option == "--ignore", value.isEmpty {
-                throw CLIError.missingValue(option)
-            }
-
-            if option == "--prompt" {
-                prompt = value
-            } else if option == "--input" {
-                input = value
-                includesInput = true
-            } else if option == "--ignore" {
-                ignoredBundleIdentifiers.append(value)
-            } else {
-                title = value
-            }
-            index += 1
-        }
-
-        guard var prompt else {
-            throw CLIError.promptRequired
-        }
-
-        if prompt == "-" || input == "-" {
-            let data = FileHandle.standardInput.readDataToEndOfFile()
-            let text = String(decoding: data, as: UTF8.self)
-            if prompt == "-" { prompt = text }
-            if input == "-" { input = text }
-        }
-        guard !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw CLIError.promptRequired
-        }
-
-        return ParsedCommand(
-            request: PromptRequest(prompt: prompt, title: title).appending(input),
-            ignoredBundleIdentifiers: ignoredBundleIdentifiers,
-            captureInput: captureInput && !includesInput
-        )
-    }
 }
 
 private enum CLIError: LocalizedError {
     case appNotAvailable
     case invalidRequest
-    case missingValue(String)
-    case promptRequired
-    case unexpectedValue(String)
-    case unknownOption(String)
 
     var errorDescription: String? {
         switch self {
         case .appNotAvailable:
-            return "Floater could not open the request. Launch Floater.app once to register its URL scheme."
+            "Floater could not open the request. Launch Floater.app once to register its URL scheme."
         case .invalidRequest:
-            return "The request could not be encoded as a Floater URL."
-        case .missingValue(let option):
-            return "\(option) needs a value."
-        case .promptRequired:
-            return "Provide a non-empty --prompt value."
-        case .unexpectedValue(let option):
-            return "\(option) does not take a value."
-        case .unknownOption(let option):
-            return "Unknown option: \(option). Run 'floater --help' for usage."
+            "The request could not be encoded as a Floater URL."
         }
     }
 }

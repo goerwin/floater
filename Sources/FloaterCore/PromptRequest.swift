@@ -38,17 +38,60 @@ public struct RoutedPrompt: Equatable, Sendable {
     public let previousProcessID: Int32?
     public let ignoredBundleIdentifiers: [String]
     public let captureInput: Bool
+    public let promptTemplate: PromptTemplate?
 
     public init(
         request: PromptRequest,
         previousProcessID: Int32? = nil,
         ignoredBundleIdentifiers: [String] = [],
-        captureInput: Bool = false
+        captureInput: Bool = false,
+        promptTemplate: PromptTemplate? = nil
     ) {
         self.request = request
         self.previousProcessID = previousProcessID
         self.ignoredBundleIdentifiers = ignoredBundleIdentifiers
         self.captureInput = captureInput
+        self.promptTemplate = promptTemplate
+    }
+
+    public init(
+        prompt: String?,
+        template: String?,
+        input: String?,
+        title: String? = nil,
+        previousProcessID: Int32? = nil,
+        ignoredBundleIdentifiers: [String] = [],
+        captureInput: Bool = false
+    ) throws {
+        guard prompt == nil || template == nil else { throw PromptInputError.conflictingPrompts }
+        guard let text = template ?? prompt,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PromptInputError.promptRequired
+        }
+        let promptTemplate = try template.map(PromptTemplate.init)
+        if let promptTemplate {
+            guard (input != nil) != captureInput else { throw PromptInputError.inputSource }
+            let resolved = try input.map { try promptTemplate.render(input: $0) }
+            self.init(
+                request: PromptRequest(prompt: resolved ?? text, title: title),
+                previousProcessID: previousProcessID,
+                ignoredBundleIdentifiers: ignoredBundleIdentifiers,
+                captureInput: captureInput,
+                promptTemplate: resolved == nil ? promptTemplate : nil
+            )
+        } else {
+            self.init(
+                request: PromptRequest(prompt: text, title: title).appending(input ?? ""),
+                previousProcessID: previousProcessID,
+                ignoredBundleIdentifiers: ignoredBundleIdentifiers,
+                captureInput: captureInput && input == nil
+            )
+        }
+    }
+
+    public func resolving(input: String) throws -> PromptRequest {
+        guard let promptTemplate else { return request.appending(input) }
+        return PromptRequest(prompt: try promptTemplate.render(input: input), title: request.title)
     }
 }
 
@@ -62,27 +105,39 @@ public enum PromptURL {
         ignoredBundleIdentifiers: [String] = [],
         captureInput: Bool = false
     ) -> URL? {
+        makeURL(for: RoutedPrompt(
+            request: request,
+            previousProcessID: previousProcessID,
+            ignoredBundleIdentifiers: ignoredBundleIdentifiers,
+            captureInput: captureInput
+        ))
+    }
+
+    public static func makeURL(for routed: RoutedPrompt) -> URL? {
         var components = URLComponents()
         components.scheme = scheme
         components.host = host
-        var queryItems = [URLQueryItem(name: "prompt", value: request.prompt)]
+        var queryItems = [URLQueryItem(
+            name: routed.promptTemplate == nil ? "prompt" : "template",
+            value: routed.promptTemplate?.source ?? routed.request.prompt
+        )]
 
-        if let title = request.title,
+        if let title = routed.request.title,
            !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             queryItems.append(URLQueryItem(name: "title", value: title))
         }
 
         components.queryItems = queryItems
 
-        if let previousProcessID {
+        if let previousProcessID = routed.previousProcessID {
             components.queryItems?.append(
                 URLQueryItem(name: "previousPID", value: String(previousProcessID))
             )
         }
-        for bundleIdentifier in ignoredBundleIdentifiers where !bundleIdentifier.isEmpty {
+        for bundleIdentifier in routed.ignoredBundleIdentifiers where !bundleIdentifier.isEmpty {
             components.queryItems?.append(URLQueryItem(name: "ignore", value: bundleIdentifier))
         }
-        if captureInput {
+        if routed.captureInput {
             components.queryItems?.append(URLQueryItem(name: "capture", value: "1"))
         }
 
@@ -90,15 +145,19 @@ public enum PromptURL {
     }
 
     public static func parse(_ url: URL) -> RoutedPrompt? {
+        try? decode(url)
+    }
+
+    public static func decode(_ url: URL) throws -> RoutedPrompt? {
         guard url.scheme == scheme, url.host == host,
-              let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
-              let prompt = queryItems.first(where: { $0.name == "prompt" })?.value,
-              !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+              let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems else {
             return nil
         }
 
+        let prompt = queryItems.first(where: { $0.name == "prompt" }).map { $0.value ?? "" }
+        let template = queryItems.first(where: { $0.name == "template" }).map { $0.value ?? "" }
         let inputItem = queryItems.first(where: { $0.name == "input" })
-        let input = inputItem?.value ?? ""
+        let input = inputItem.map { $0.value ?? "" }
         let title = queryItems.first(where: { $0.name == "title" })?.value
         let previousProcessID = queryItems
             .first(where: { $0.name == "previousPID" })?
@@ -108,10 +167,13 @@ public enum PromptURL {
             guard item.name == "ignore", let value = item.value, !value.isEmpty else { return nil }
             return value
         }
-        let captureInput = inputItem == nil && queryItems.contains { $0.name == "capture" && $0.value == "1" }
+        let captureInput = queryItems.contains { $0.name == "capture" && $0.value == "1" }
 
-        return RoutedPrompt(
-            request: PromptRequest(prompt: prompt, title: title).appending(input),
+        return try RoutedPrompt(
+            prompt: prompt,
+            template: template,
+            input: input,
+            title: title,
             previousProcessID: previousProcessID,
             ignoredBundleIdentifiers: ignoredBundleIdentifiers,
             captureInput: captureInput
