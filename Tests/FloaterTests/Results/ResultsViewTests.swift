@@ -6,6 +6,64 @@ import XCTest
 
 @MainActor
 final class ResultsViewTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        MainActor.assumeIsolated { _ = NSApplication.shared }
+    }
+
+    func testLongPromptHasItsOwnScrollableAreaAboveTheChat() throws {
+        let state = FloaterState(provider: TestProvider())
+        let prompt = String(repeating: "Detailed instructions that must remain readable.\n", count: 100)
+        state.restore(HistoryEntry(request: PromptRequest(prompt: prompt), response: String(repeating: "Reply\n", count: 100)))
+        state.isPromptExpanded = true
+        let controller = FloatingPanelController(state: state)
+        controller.show(previousApplication: nil)
+        let window = try XCTUnwrap(controller.window)
+        window.setFrameOrigin(NSPoint(x: -10000, y: -10000))
+        defer { controller.hide() }
+        settle(window)
+        let promptScroll = try XCTUnwrap(descendants(of: NSScrollView.self, in: window.contentView!).first {
+            $0.identifier?.rawValue == "promptText"
+        })
+        let chat = try XCTUnwrap(descendants(of: ResponseScrollView.self, in: window.contentView!).first)
+        XCTAssertEqual(textViews(in: promptScroll).first?.string, prompt)
+        XCTAssertEqual(promptScroll.contentView.bounds.minY, 0, accuracy: 1, "The prompt should open at its beginning")
+        let promptText = try XCTUnwrap(textViews(in: promptScroll).first)
+        let lineHeight = try XCTUnwrap(promptText.layoutManager).defaultLineHeight(for: try XCTUnwrap(promptText.font))
+            + (promptText.defaultParagraphStyle?.lineSpacing ?? 0)
+        XCTAssertEqual(promptScroll.contentView.bounds.height, ceil(lineHeight * 6) + 8, accuracy: 1)
+        let promptBounds = promptScroll.convert(promptScroll.bounds, to: window.contentView)
+        let chatBounds = chat.convert(chat.bounds, to: window.contentView)
+        let gap = max(chatBounds.minY - promptBounds.maxY, promptBounds.minY - chatBounds.maxY)
+        XCTAssertGreaterThanOrEqual(gap, 24, "The prompt and conversation need clear separation")
+        XCTAssertGreaterThan(promptScroll.documentView!.frame.height, promptScroll.contentSize.height)
+        let chatOffset = chat.contentView.bounds.origin
+        promptScroll.contentView.scroll(to: NSPoint(x: 0, y: promptScroll.documentView!.frame.height))
+        promptScroll.reflectScrolledClipView(promptScroll.contentView)
+        settle(window)
+        XCTAssertGreaterThan(promptScroll.contentView.bounds.minY, 0)
+        XCTAssertEqual(chat.contentView.bounds.origin, chatOffset)
+        XCTAssertFalse(textViews(in: chat).contains { $0.string.contains("Detailed instructions") })
+    }
+
+    func testChatMessagesUseOppositeSidesWithoutSpeakerLabels() throws {
+        let state = FloaterState(provider: TestProvider())
+        var entry = HistoryEntry(request: PromptRequest(prompt: "Instructions"), response: "First reply")
+        entry.messages += [ChatMessage(role: .user, content: "My follow-up"), ChatMessage(role: .assistant, content: "Second reply")]
+        state.restore(entry)
+        let window = makeWindow(state: state)
+        defer { window.close() }
+        let chat = try XCTUnwrap(descendants(of: ResponseScrollView.self, in: window.contentView!).first)
+        let texts = textViews(in: chat)
+        XCTAssertEqual(texts.map(\.string), ["First reply", "My follow-up", "Second reply"])
+        XCTAssertEqual(buttons(in: chat).filter { $0.identifier?.rawValue.hasPrefix("messageCopy-") == true }.count, 3)
+        guard texts.count == 3 else { return }
+        let replyBounds = texts[0].convert(texts[0].bounds, to: chat.documentView)
+        let userBounds = texts[1].convert(texts[1].bounds, to: chat.documentView)
+        XCTAssertGreaterThan(userBounds.minX, replyBounds.maxX)
+        XCTAssertTrue(texts.allSatisfy(\.isSelectable))
+    }
+
     func testComposerShowsThreeLinesAndScrollsLongDrafts() throws {
         let state = FloaterState(provider: TestProvider())
         state.restore(HistoryEntry(request: PromptRequest(prompt: "Prompt"), response: "Result"))
@@ -18,11 +76,13 @@ final class ResultsViewTests: XCTestCase {
         let composerBounds = scroll.convert(scroll.bounds, to: window.contentView)
         let sendBounds = send.convert(send.bounds, to: window.contentView)
         XCTAssertTrue(composerBounds.contains(sendBounds), "Send should sit inside the message box")
+        XCTAssertNil(buttons(in: window.contentView!).first { $0.identifier?.rawValue == "compact" })
         XCTAssertEqual(composerBounds.width, response.frame.width, accuracy: 1)
         XCTAssertTrue(send.title.isEmpty, "Send should show only its icon")
         XCTAssertNotNil(send.image)
         let layout = try XCTUnwrap(editor.layoutManager)
         let lineHeight = layout.defaultLineHeight(for: try XCTUnwrap(editor.font))
+            + (editor.defaultParagraphStyle?.lineSpacing ?? 0)
         let expectedHeight = ceil(lineHeight * 3) + editor.textContainerInset.height * 2
         XCTAssertEqual(scroll.contentView.bounds.height, expectedHeight, accuracy: 1)
 
@@ -48,6 +108,34 @@ final class ResultsViewTests: XCTestCase {
         XCTAssertEqual(scroll.contentView.bounds.minY, 0, accuracy: 1)
     }
 
+    func testMessageCopyUsesOriginalContentWithoutChangingTheConversation() throws {
+        let state = FloaterState(provider: TestProvider(), historyStore: HistoryStore(fileURL: nil))
+        var entry = HistoryEntry(request: PromptRequest(prompt: "Instructions"), response: "First reply")
+        let followUp = ChatMessage(role: .user, content: "My follow-up")
+        let partial = ChatMessage(role: .assistant, content: "Partial reply", status: .stopped)
+        entry.messages += [followUp, partial]
+        state.restore(entry)
+        state.followUp = "Unsent draft"
+        var dismissals = 0
+        let window = makeWindow(state: state, onDismiss: { dismissals += 1 })
+        defer { window.close() }
+        let chat = try XCTUnwrap(descendants(of: ResponseScrollView.self, in: window.contentView!).first)
+        var copied: [String] = []
+        chat.onCopyMessage = { copied.append($0) }
+        let original = state.conversation
+        for message in entry.messages.dropFirst() {
+            let button = try XCTUnwrap(buttons(in: chat).first {
+                $0.identifier?.rawValue == "messageCopy-\(message.id)"
+            })
+            XCTAssertTrue(button.isEnabled)
+            button.performClick(nil)
+        }
+        XCTAssertEqual(copied, ["First reply", "My follow-up", "Partial reply"])
+        XCTAssertEqual(state.conversation, original)
+        XCTAssertEqual(state.followUp, "Unsent draft")
+        XCTAssertEqual(dismissals, 0)
+    }
+
     func testSavedRunnerErrorDoesNotDisplayTheRawTemplate() throws {
         var entry = HistoryEntry(request: PromptRequest(prompt: "Original"), response: "First reply")
         entry.messages.append(ChatMessage(role: .user, content: "Follow up"))
@@ -59,7 +147,7 @@ final class ResultsViewTests: XCTestCase {
         let window = makeWindow(state: state)
         defer { window.close() }
         let text = try XCTUnwrap(descendants(of: ResponseScrollView.self, in: window.contentView!).first)
-        let displayed = try XCTUnwrap(textViews(in: text).first).string
+        let displayed = textViews(in: text).map(\.string).joined(separator: "\n")
         XCTAssertTrue(displayed.contains("First reply"))
         XCTAssertTrue(displayed.contains("Follow up"))
         XCTAssertTrue(displayed.contains("[Failed]"))
@@ -105,7 +193,7 @@ final class ResultsViewTests: XCTestCase {
         model.setCanReplace(true)
         let window = makeWindow(state: model)
         defer { window.close() }
-        let order = ["composer", "compact", "copy", "edit", "replace", "dismiss", "history", "new"]
+        let order = ["composer", "copy", "edit", "replace", "dismiss", "history", "new"]
         for identifier in order.dropFirst() + ["composer"] {
             window.sendEvent(keyEvent("\t", code: 48, modifiers: .option, window: window))
             XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, identifier)
@@ -126,7 +214,7 @@ final class ResultsViewTests: XCTestCase {
         XCTAssertTrue(window.firstResponder === editor)
         XCTAssertEqual(model.followUp, "\t")
         sendKey("\t", code: 48, modifiers: .option, to: window)
-        XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, "compact")
+        XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, "copy")
     }
 
     func testResultsActionsActivateWithEnterAndSpace() throws {

@@ -154,11 +154,11 @@ struct PanelButton: View {
 }
 
 enum PanelControl: String {
-    case prompt, run, copy, edit, replace, dismiss, history, new, composer, send, stop, retry, compact
+    case prompt, run, copy, edit, replace, dismiss, history, new, composer, send, stop, retry
 
     var shortcut: PanelShortcut? {
         switch self {
-        case .prompt, .composer, .send, .stop, .retry, .compact: nil
+        case .prompt, .composer, .send, .stop, .retry: nil
         case .run: .run
         case .copy: .copy
         case .edit: .edit

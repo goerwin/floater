@@ -45,7 +45,7 @@ enum ChatGenerationError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .contextLimit: "This conversation has reached the model's context limit. Use Compact or start a new conversation. Your messages and draft are saved."
+        case .contextLimit: "This conversation has reached the model's context limit. Start a new conversation. Your messages and draft are saved."
         case .emptyResponse: "The model returned an empty reply. Try again."
         case .runnerFailed: "Gemma couldn't finish this reply. Retry or choose another model."
         case .failed(let message): message

@@ -131,7 +131,7 @@ final class LlamaCPPProvider: AIProvider {
             throw GenerationError.failed("Gemma returned unreadable text. Try again.")
         }
         guard text.trimmingCharacters(in: .newlines).hasSuffix(Self.endMarker) else {
-            throw ChatGenerationError.failed("Gemma reached its response or context limit. Use Compact for a long conversation, or Retry for another attempt.")
+            throw ChatGenerationError.failed("Gemma reached its response or context limit. Start a new conversation, or Retry for another attempt.")
         }
         let response = Self.responseText(text)
         guard !response.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {

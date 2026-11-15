@@ -30,7 +30,7 @@ struct MultilineInput: View {
         .overlay(alignment: .topLeading) {
             if text.isEmpty {
                 Text(placeholder)
-                    .font(.system(size: 13))
+                    .font(.system(size: ReadingTextStyle.body.fontSize))
                     .foregroundStyle(.tertiary)
                     .padding(8)
                     .allowsHitTesting(false)
@@ -71,7 +71,8 @@ private struct NativeInput: NSViewRepresentable {
         view.isVerticallyResizable = true
         view.isHorizontallyResizable = false
         view.drawsBackground = false
-        view.font = .systemFont(ofSize: 13)
+        view.font = ReadingTextStyle.body.font
+        view.defaultParagraphStyle = ReadingTextStyle.body.paragraphStyle
         view.textColor = .labelColor
         view.insertionPointColor = .labelColor
         view.textContainerInset = NSSize(width: 8, height: 8)
@@ -113,7 +114,7 @@ private struct NativeInput: NSViewRepresentable {
         let width = proposal.width ?? FloaterPanelLayout.contentWidth
         guard let view = nsView.documentView as? InputTextView,
               let container = view.textContainer, let layout = view.layoutManager else { return nil }
-        let lineHeight = layout.defaultLineHeight(for: view.font ?? .systemFont(ofSize: 13))
+        let lineHeight = ReadingTextStyle.body.lineHeight(using: layout)
         if let visibleLineCount {
             return CGSize(width: width, height: ceil(lineHeight * CGFloat(visibleLineCount)) + 16)
         }

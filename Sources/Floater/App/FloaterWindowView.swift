@@ -176,9 +176,9 @@ struct FloaterWindowView: View {
         if state.screen == .newRequest {
             controls = [.prompt, .dismiss] + (state.canSubmit ? [.run] : []) + [.history, .new]
         } else {
-            controls = [.composer] + (state.canSend ? [.send] : [])
-                + (state.canCompact ? [.compact] : [])
+            controls = [.composer]
                 + (state.isGenerating ? [.stop] : state.canRetry ? [.retry] : [])
+                + (state.canSend ? [.send] : [])
                 + (state.canUseResponse ? [.copy, .edit] : [.edit])
                 + (canReplace ? [.replace] : [])
                 + [.dismiss, .history, .new]

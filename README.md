@@ -32,7 +32,7 @@ Use **New** to start a request, **Open** to return to the current window, and **
 
 Follow-ups can change the task. Floater sends normal user and assistant messages without adding task instructions. Each CLI or URL request starts a fresh conversation. Replace keeps the source editor for the current conversation; reopening a different saved conversation captures the editor you came from.
 
-Models have a context limit. Floater never automatically drops or summarizes messages. Choose **Compact** to summarize earlier messages for the model when needed; recent messages stay in full, and the original conversation remains visible and saved. At the limit, compact the conversation or start a new one before continuing.
+Models have a context limit. Floater never automatically drops or summarizes messages. At the limit, start a new conversation before continuing. Your messages and draft stay saved in History.
 
 Local builds use a trusted Apple Development certificate when available and otherwise use ad-hoc signing. The build checks certificate revocation because macOS can move apps signed with a revoked certificate to the Trash. To keep Accessibility permission across rebuilds, create a new Apple Development certificate in Xcode if your old one was revoked.
 

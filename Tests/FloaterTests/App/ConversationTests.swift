@@ -100,7 +100,7 @@ final class ConversationTests: XCTestCase {
         XCTAssertEqual(state.messages.first?.content, prompt)
         XCTAssertEqual(state.messages.last?.status, .failed)
         XCTAssertNil(state.conversation?.summary)
-        XCTAssertTrue(state.errorMessage?.contains("Compact") == true)
+        XCTAssertTrue(state.errorMessage?.localizedCaseInsensitiveContains("start a new conversation") == true)
         XCTAssertTrue(state.canRetry)
     }
 
@@ -212,6 +212,7 @@ final class ConversationTests: XCTestCase {
         let provider = ChatTestProvider()
         let state = FloaterState(provider: provider)
         state.start(PromptRequest(prompt: String(repeating: "Original prompt line.\n", count: 100)))
+        state.isPromptExpanded = false
         await wait { provider.requests.count == 1 }
         let controller = FloatingPanelController(state: state)
         controller.show(previousApplication: nil)
@@ -225,10 +226,18 @@ final class ConversationTests: XCTestCase {
         XCTAssertGreaterThan(scroll.contentView.bounds.minY, 0)
         state.isPromptExpanded = true
         settle(window)
-        XCTAssertEqual(scroll.contentView.bounds.minY, 0, accuracy: 2)
-        provider.update(state.response + "More text")
+        let prompt = try XCTUnwrap(descendants(of: NSScrollView.self, in: window.contentView!).first {
+            $0.identifier?.rawValue == "promptText"
+        })
+        XCTAssertEqual(prompt.contentView.bounds.minY, 0, accuracy: 2)
+        XCTAssertGreaterThan(scroll.contentView.bounds.minY, 0)
+        let nextReply = state.response + "More text"
+        provider.update(nextReply)
+        await wait { state.response == nextReply }
         settle(window)
-        XCTAssertEqual(scroll.contentView.bounds.minY, 0, accuracy: 2)
+        XCTAssertEqual(prompt.contentView.bounds.minY, 0, accuracy: 2)
+        XCTAssertGreaterThan(scroll.contentView.bounds.minY, 0)
+        XCTAssertGreaterThanOrEqual(scroll.contentView.bounds.maxY, scroll.documentView!.bounds.maxY - 3)
     }
 
     func testLongErrorsLeaveTheComposerAndActionsInsideTheWindow() throws {

@@ -10,6 +10,32 @@ final class ResultsScrollingTests: XCTestCase {
         MainActor.assumeIsolated { _ = NSApplication.shared }
     }
 
+    func testWaitingBubbleKeepsItsSizeAndReplacesThePlaceholderWhenTheReplyArrives() async throws {
+        let provider = StreamingTestProvider()
+        let state = FloaterState(provider: provider)
+        state.start(PromptRequest(prompt: "Hello"))
+        let window = makeWindow(state: state)
+        defer { window.close(); provider.finish() }
+        let waitingText = try XCTUnwrap(textViews(in: window.contentView!).first {
+            $0.string == provider.preparationMessage
+        })
+        let bubble = try XCTUnwrap(waitingText.superview)
+        let bubbleSize = bubble.frame.size
+        let windowSize = window.frame.size
+        for _ in 0..<5 {
+            try await Task.sleep(for: .milliseconds(100))
+            window.contentView?.layoutSubtreeIfNeeded()
+            XCTAssertEqual(bubble.frame.size, bubbleSize, "The waiting animation must not resize its bubble")
+            XCTAssertEqual(window.frame.size, windowSize)
+        }
+        provider.send("Hello there.")
+        try await Task.sleep(for: .milliseconds(100))
+        settle(window)
+        XCTAssertEqual(waitingText.string, "Hello there.")
+        XCTAssertTrue(waitingText.isSelectable)
+        provider.finish()
+    }
+
     func testOpeningSavedConversationsStartsAtLatestMessageAndAllowsScrollingUp() throws {
         let state = FloaterState(provider: TestProvider())
         let window = makeWindow(state: state)
@@ -43,7 +69,7 @@ final class ResultsScrollingTests: XCTestCase {
         provider.send(response)
         try await Task.sleep(for: .milliseconds(150))
         settle(window)
-        let scroll = try XCTUnwrap(descendants(of: NSScrollView.self, in: window.contentView!).first)
+        let scroll = try XCTUnwrap(descendants(of: ResponseScrollView.self, in: window.contentView!).first)
         XCTAssertGreaterThan(scroll.documentView!.bounds.height, scroll.contentView.bounds.height)
         XCTAssertTrue(isAtBottom(scroll), "Streaming should reveal the latest text: \(scroll.contentView.bounds), document: \(scroll.documentView!.bounds)")
 
@@ -92,7 +118,7 @@ final class ResultsScrollingTests: XCTestCase {
             provider.send(String(repeating: "A generated sentence.\n", count: count))
             try await Task.sleep(for: .milliseconds(75))
             settle(window)
-            let scroll = try XCTUnwrap(descendants(of: NSScrollView.self, in: window.contentView!).first)
+            let scroll = try XCTUnwrap(descendants(of: ResponseScrollView.self, in: window.contentView!).first)
             XCTAssertTrue(isAtBottom(scroll))
             XCTAssertLessThanOrEqual(window.frame.height, FloaterPanelLayout.maximumHeight)
             if count == 1 { initialHeight = window.frame.height }
@@ -108,14 +134,14 @@ final class ResultsScrollingTests: XCTestCase {
         state.restore(request: request, response: response)
         let window = makeWindow(state: state)
         defer { window.close(); provider.finish() }
-        let originalScroll = try XCTUnwrap(descendants(of: NSScrollView.self, in: window.contentView!).first)
+        let originalScroll = try XCTUnwrap(descendants(of: ResponseScrollView.self, in: window.contentView!).first)
         XCTAssertTrue(isAtBottom(originalScroll), "Saved results start at the latest reply")
 
         state.start(request)
         provider.send(response)
         try await Task.sleep(for: .milliseconds(150))
         settle(window)
-        let scroll = try XCTUnwrap(descendants(of: NSScrollView.self, in: window.contentView!).first)
+        let scroll = try XCTUnwrap(descendants(of: ResponseScrollView.self, in: window.contentView!).first)
         XCTAssertFalse(scroll === originalScroll)
         XCTAssertTrue(isAtBottom(scroll))
 
@@ -127,7 +153,7 @@ final class ResultsScrollingTests: XCTestCase {
         XCTAssertEqual(scroll.contentView.bounds.minY, 100, accuracy: 2, "Finishing must preserve the reader's position")
         let text = try XCTUnwrap(textViews(in: scroll).first)
         XCTAssertTrue(text.isSelectable)
-        XCTAssertEqual(text.string, "Floater\n" + response)
+        XCTAssertEqual(text.string, response)
     }
 
     func testLongStreamingResponseRemainsScrollable() async throws {
@@ -142,7 +168,7 @@ final class ResultsScrollingTests: XCTestCase {
         var response = String(repeating: "A complete sentence in a longer generated response.\n", count: 1000)
         provider.send(response)
         try await Task.sleep(for: .milliseconds(200))
-        let scroll = try XCTUnwrap(descendants(of: NSScrollView.self, in: window.contentView!).first)
+        let scroll = try XCTUnwrap(descendants(of: ResponseScrollView.self, in: window.contentView!).first)
         let started = ContinuousClock.now
         for index in 0..<100 {
             response += "Another generated sentence.\n"
