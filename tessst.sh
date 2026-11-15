@@ -4,7 +4,7 @@
 
 TITLE="Fix Grammar"
 
-PROMPT="Rewrite the following <transcript> text for clarity and naturalness.
+PROMPT="Rewrite the following text for clarity and naturalness.
 Preserve its meaning, language, register, tone, and approximate length.
 If no changes are needed, return it unchanged.
 Return only the rewritten text.
@@ -19,7 +19,10 @@ INPUT="Done. Committed 32cd5629b9 (fix(antares): enable tab navigation for neste
 Posted both replies as egaitan-godaddy: [Save button thread](https://github.com/godaddy/antares/pull/346#discussion_r4225352724) and [Switch and DNS link thread](https://github.com/godaddy/antares/pull/346#discussion_r4225353100). Copilot had resolved both threads after the push; I replied as requested.
 "
 
+PROMPT="$PROMPT
+
+$INPUT"
+
 make dev-app \
   FLOATER_PROMPT="$PROMPT" \
-  FLOATER_TITLE="$TITLE" \
-  FLOATER_INPUT="$INPUT"
+  FLOATER_TITLE="$TITLE"

@@ -53,13 +53,13 @@ final class NavigationTests: XCTestCase {
         let window = try XCTUnwrap(controller.window)
         defer { controller.hide() }
         settle(window)
-        let input = try XCTUnwrap(window.contentView?.firstDescendant(where: { $0.identifier?.rawValue == "input" }))
-        window.makeFirstResponder(input)
+        let dismiss = try XCTUnwrap(window.contentView?.firstDescendant(where: { $0.identifier?.rawValue == "dismiss" }))
+        window.makeFirstResponder(dismiss)
         settle(window)
         window.resignKey()
         window.becomeKey()
         settle(window)
-        XCTAssertTrue(window.firstResponder === input)
+        XCTAssertTrue(window.firstResponder === dismiss)
         controller.showNewRequest(previousApplication: nil)
         settle(window)
         XCTAssertEqual((window.firstResponder as? NSView)?.identifier?.rawValue, "prompt")
@@ -109,7 +109,7 @@ final class NavigationTests: XCTestCase {
             } else {
                 XCTAssertNotNil(window.contentView?.firstDescendant(where: { $0 is NSSearchField }).flatMap { ($0 as? NSSearchField)?.currentEditor() })
             }
-            let target = try XCTUnwrap(window.contentView?.firstDescendant(where: { $0.identifier?.rawValue == (mode == "newRequest" ? "input" : mode == "results" ? "edit" : "historyList") }))
+            let target = try XCTUnwrap(window.contentView?.firstDescendant(where: { $0.identifier?.rawValue == (mode == "newRequest" ? "dismiss" : mode == "results" ? "edit" : "historyList") }))
             window.makeFirstResponder(target)
             settle(window)
             window.resignKey()
@@ -122,7 +122,7 @@ final class NavigationTests: XCTestCase {
     func testHistoryBrowsingAndEditingPreserveTheOriginatingDraftOrResponse() throws {
         for resultsMode in [false, true] {
             let model = FloaterState(provider: TestProvider())
-            let original = HistoryEntry(request: PromptRequest(prompt: "Original prompt", input: "Original input"), response: "Original response")
+            let original = HistoryEntry(request: PromptRequest(prompt: "Original prompt\n\nOriginal input"), response: "Original response")
             if resultsMode {
                 model.restore(original)
                 model.setActionError("Original action error")
@@ -134,20 +134,19 @@ final class NavigationTests: XCTestCase {
             defer { controller.hide() }
             settle(window)
             if !resultsMode {
-                for (editor, text) in zip(textViews(in: window.contentView!), ["Original draft", "Draft input"]) {
-                    editor.insertText(text, replacementRange: editor.selectedRange())
-                }
+                let editor = try XCTUnwrap(textViews(in: window.contentView!).first)
+                editor.insertText("Original draft\n\nDraft input", replacementRange: editor.selectedRange())
                 settle(window)
             }
             controller.showHistory()
-            controller.openHistoryEntry(HistoryEntry(request: PromptRequest(prompt: "Saved prompt", input: "Saved input"), response: "Saved result"))
+            controller.openHistoryEntry(HistoryEntry(request: PromptRequest(prompt: "Saved prompt\n\nSaved input"), response: "Saved result"))
             settle(window)
             sendKey("e", code: 14, modifiers: .command, to: window)
-            XCTAssertEqual(textViews(in: window.contentView!).filter { !$0.isFieldEditor }.map(\.string), ["Saved prompt", "Saved input"])
+            XCTAssertEqual(textViews(in: window.contentView!).filter { !$0.isFieldEditor }.map(\.string), ["Saved prompt\n\nSaved input"])
             sendKey("\u{1b}", code: 53, to: window)
             XCTAssertFalse(controller.isShowingHistory)
             XCTAssertTrue(controller.isVisible)
-            XCTAssertEqual(model.currentRequest?.prompt, "Saved prompt")
+            XCTAssertEqual(model.currentRequest?.prompt, "Saved prompt\n\nSaved input")
             XCTAssertEqual(model.response, "Saved result")
             sendKey("\u{1b}", code: 53, to: window)
             XCTAssertTrue(controller.isShowingHistory)
@@ -161,7 +160,7 @@ final class NavigationTests: XCTestCase {
                 XCTAssertTrue(model.isPromptExpanded)
             } else {
                 XCTAssertNil(model.currentRequest)
-                XCTAssertEqual(textViews(in: window.contentView!).filter { !$0.isFieldEditor }.map(\.string), ["Original draft", "Draft input"])
+                XCTAssertEqual(textViews(in: window.contentView!).filter { !$0.isFieldEditor }.map(\.string), ["Original draft\n\nDraft input"])
             }
         }
     }
@@ -169,7 +168,7 @@ final class NavigationTests: XCTestCase {
     func testCancelEditingReturnsToTheOriginalResult() throws {
         for useEscape in [true, false] {
             let model = FloaterState(provider: TestProvider())
-            let request = PromptRequest(prompt: "Original prompt", input: "Original input", title: "Original title")
+            let request = PromptRequest(prompt: "Original prompt\n\nOriginal input", title: "Original title")
             model.restore(request: request, response: "Original response", errorMessage: "Original error")
             model.setActionError("Original action error")
             let controller = FloatingPanelController(state: model)
@@ -304,7 +303,7 @@ final class NavigationTests: XCTestCase {
     func testHistoryEnterAndSpaceReturnToNewRequestAndResultsWithEscape() throws {
         for resultsMode in [false, true] {
             let model = FloaterState(provider: TestProvider())
-            let entry = HistoryEntry(request: PromptRequest(prompt: "Original prompt", input: "Original input"), response: "Original response")
+            let entry = HistoryEntry(request: PromptRequest(prompt: "Original prompt\n\nOriginal input"), response: "Original response")
             if resultsMode { model.restore(entry) }
             let controller = FloatingPanelController(state: model)
             controller.show(previousApplication: nil)
@@ -312,10 +311,8 @@ final class NavigationTests: XCTestCase {
             defer { controller.hide() }
             settle(window)
             if !resultsMode {
-                let editors = textViews(in: window.contentView!)
-                for (editor, text) in zip(editors, ["Draft prompt", "Draft input"]) {
-                    editor.insertText(text, replacementRange: editor.selectedRange())
-                }
+                let editor = try XCTUnwrap(textViews(in: window.contentView!).first)
+                editor.insertText("Draft prompt\n\nDraft input", replacementRange: editor.selectedRange())
                 settle(window)
             }
             for (characters, code) in [("\r", UInt16(36)), (" ", UInt16(49))] {
@@ -339,7 +336,7 @@ final class NavigationTests: XCTestCase {
                     XCTAssertEqual((window.firstResponder as? NSButton)?.accessibilityLabel(), "Copy")
                 } else {
                     XCTAssertNil(model.currentRequest)
-                    XCTAssertEqual(textViews(in: window.contentView!).filter { !$0.isFieldEditor }.map(\.string), ["Draft prompt", "Draft input"])
+                    XCTAssertEqual(textViews(in: window.contentView!).filter { !$0.isFieldEditor }.map(\.string), ["Draft prompt\n\nDraft input"])
                 }
             }
         }
@@ -379,8 +376,8 @@ final class NavigationTests: XCTestCase {
         let model = FloaterState(provider: TestProvider())
         let controller = FloatingPanelController(state: model)
         let request = PromptRequest(
-            prompt: String(repeating: "Instruction\n", count: 18),
-            input: String(repeating: "Input text\n", count: 18), title: "Long request"
+            prompt: String(repeating: "Instruction\n", count: 18) + "\n" + String(repeating: "Input text\n", count: 18),
+            title: "Long request"
         )
         model.start(request)
         controller.show(previousApplication: nil)
@@ -393,13 +390,13 @@ final class NavigationTests: XCTestCase {
         sendKey("\r", code: 36, to: window)
         XCTAssertNil(model.currentRequest)
         let editors = textViews(in: window.contentView!)
-        XCTAssertEqual(editors.map(\.string), [request.prompt, request.input])
+        XCTAssertEqual(editors.map(\.string), [request.prompt])
         XCTAssertGreaterThan(window.frame.height, FloaterPanelLayout.maximumHeight)
         XCTAssertLessThanOrEqual(window.frame.height, FloaterPanelLayout.maximumEditingHeight)
 
         sendKey("\r", code: 36, modifiers: .command, to: window)
         XCTAssertEqual(model.currentRequest?.title, request.title)
-        XCTAssertEqual(model.currentRequest?.input, request.input)
+        XCTAssertEqual(model.currentRequest?.prompt, request.prompt)
         XCTAssertLessThanOrEqual(window.frame.height, FloaterPanelLayout.maximumHeight)
     }
 }

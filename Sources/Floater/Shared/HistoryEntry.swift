@@ -21,7 +21,7 @@ struct HistoryEntry: Codable, Equatable, Identifiable {
 
     func matches(_ query: String) -> Bool {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return query.isEmpty || [request.title ?? "", request.prompt, request.input, response]
+        return query.isEmpty || [request.title ?? "", request.prompt, response]
             .contains { $0.localizedStandardContains(query) }
     }
 }

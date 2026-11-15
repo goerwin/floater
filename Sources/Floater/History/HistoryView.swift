@@ -87,7 +87,7 @@ struct HistoryView: View {
             Button("Cancel", role: .cancel) {}
             Button("Clear history", role: .destructive, action: onClear)
         } message: {
-            Text("This deletes all saved prompts, input, and responses from this Mac.")
+            Text("This deletes all saved prompts and responses from this Mac.")
         }
     }
 

@@ -2,7 +2,6 @@ import SwiftUI
 
 struct NewRequestView: View {
     @Binding var prompt: String
-    @Binding var input: String
     let canSubmit: Bool
     @Binding var focusedControl: PanelControl?
     let onSubmit: () -> Void
@@ -14,13 +13,20 @@ struct NewRequestView: View {
         VStack(alignment: .leading, spacing: 8) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
-                    fieldLabel("Instructions")
+                    Text("Prompt")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
 
-                    editor(text: $prompt, placeholder: "What should Floater do?", label: "Instructions", control: .prompt)
-
-                    fieldLabel("Prompt (optional)")
-
-                    editor(text: $input, placeholder: "Add text to process (optional)", label: "Prompt (optional)", control: .input)
+                    MultilineInput(
+                        text: $prompt,
+                        placeholder: "What should Floater do?",
+                        label: "Prompt",
+                        isFocused: focusedControl == .prompt,
+                        prefersInitialFocus: true,
+                        identifier: PanelControl.prompt.rawValue,
+                        onFocus: { if focusedControl != .prompt { focusedControl = .prompt } },
+                        onSubmit: onSubmit
+                    )
                 }
                 .padding(1)
                 .fixedSize(horizontal: false, vertical: true)
@@ -39,26 +45,5 @@ struct NewRequestView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-
-    private func editor(
-        text: Binding<String>, placeholder: String, label: String, control: PanelControl
-    ) -> some View {
-        MultilineInput(
-            text: text,
-            placeholder: placeholder,
-            label: label,
-            isFocused: focusedControl == control,
-            prefersInitialFocus: control == .prompt,
-            identifier: control.rawValue,
-            onFocus: { if focusedControl != control { focusedControl = control } },
-            onSubmit: onSubmit
-        )
-    }
-
-    private func fieldLabel(_ title: String) -> some View {
-        Text(title)
-            .font(.caption.weight(.medium))
-            .foregroundStyle(.secondary)
     }
 }

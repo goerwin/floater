@@ -10,12 +10,12 @@ struct FloaterCLI {
 
         if arguments.contains("--help") || arguments.contains("-h") {
             print("""
-            Usage: floater --prompt <text> [--input <text>] [--title <text>] [--ignore <bundle-id>]... [--capture-input]
+            Usage: floater --prompt <text> [--title <text>] [--ignore <bundle-id>]... [--capture-input]
 
-            Use --input - to read input from standard input.
+            Use --prompt - to read the full prompt from standard input.
             Repeat --ignore to skip those apps when choosing where to read and replace.
-            --capture-input reads the selected text, or the focused field when nothing is selected.
-            Example: floater --prompt "Translate this" --input "hola mundo" --title "Translation"
+            --capture-input appends selected text, or the focused field when nothing is selected.
+            Example: floater --prompt "Translate hola mundo into English." --title "Translation"
             """)
             return
         }
@@ -27,8 +27,7 @@ struct FloaterCLI {
                 for: command.request,
                 previousProcessID: previousProcessID,
                 ignoredBundleIdentifiers: command.ignoredBundleIdentifiers,
-                captureInput: command.captureInput && !command.includesInput,
-                includesInput: command.includesInput
+                captureInput: command.captureInput
             ) else {
                 throw CLIError.invalidRequest
             }
@@ -44,7 +43,6 @@ struct FloaterCLI {
 
     private struct ParsedCommand {
         var request: PromptRequest
-        var includesInput: Bool
         var ignoredBundleIdentifiers: [String]
         var captureInput: Bool
     }
@@ -101,20 +99,24 @@ struct FloaterCLI {
             index += 1
         }
 
-        guard let prompt, !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard var prompt else {
             throw CLIError.promptRequired
         }
 
-        if input == "-" {
+        if prompt == "-" || input == "-" {
             let data = FileHandle.standardInput.readDataToEndOfFile()
-            input = String(decoding: data, as: UTF8.self)
+            let text = String(decoding: data, as: UTF8.self)
+            if prompt == "-" { prompt = text }
+            if input == "-" { input = text }
+        }
+        guard !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw CLIError.promptRequired
         }
 
         return ParsedCommand(
-            request: PromptRequest(prompt: prompt, input: input, title: title),
-            includesInput: includesInput,
+            request: PromptRequest(prompt: prompt, title: title).appending(input),
             ignoredBundleIdentifiers: ignoredBundleIdentifiers,
-            captureInput: captureInput
+            captureInput: captureInput && !includesInput
         )
     }
 }

@@ -8,7 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings = AppSettings()
     let accessibility = AccessibilityAccess()
     private lazy var state = FloaterState(
-        provider: FoundationModelsProvider(), historyStore: historyStore
+        provider: SelectedModelProvider(settings: settings), historyStore: historyStore
     )
     private lazy var panelController = FloatingPanelController(
         state: state, historyStore: historyStore, settings: settings, accessibility: accessibility
@@ -76,9 +76,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         return PromptRequest(
             prompt: prompt,
-            input: argumentValue(after: "--input", in: arguments) ?? "",
             title: argumentValue(after: "--title", in: arguments)
-        )
+        ).appending(argumentValue(after: "--input", in: arguments) ?? "")
     }
 
     private func argumentValue(after option: String, in arguments: [String]) -> String? {

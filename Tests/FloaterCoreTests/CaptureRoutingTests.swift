@@ -156,7 +156,7 @@ final class CaptureRoutingTests: XCTestCase {
         )
         XCTAssertEqual(
             CaptureMessages.unreadableField(for: helper),
-            "Floater could not read the focused field."
+            "Floater could not read the focused field. The source app may need its text accessibility mode enabled."
         )
         XCTAssertEqual(
             CaptureMessages.accessibility(for: alfred),

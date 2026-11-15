@@ -170,7 +170,7 @@ public enum CaptureMessages {
 
     public static func unreadableField(for app: TargetCandidate) -> String {
         withSkipHint(
-            "Floater could not read the focused field.",
+            "Floater could not read the focused field. The source app may need its text accessibility mode enabled.",
             bundleIdentifier: app.bundleIdentifier
         )
     }

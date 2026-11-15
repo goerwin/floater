@@ -10,6 +10,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     private let accessibility: AccessibilityAccess
     private let captureTarget: @MainActor (NSRunningApplication) -> any TextPasteTarget
     private let readFocusedField: @MainActor (NSRunningApplication) -> FieldCapture
+    private let expandSelection: @MainActor (NSRunningApplication) async -> FieldCapture?
     private let activateForCapture: @MainActor (NSRunningApplication) async -> Void
     private let replaceText: @MainActor (String, any TextPasteTarget, Bool, Bool) async throws -> Void
     private let historyState = HistoryViewState()
@@ -32,13 +33,11 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         readFocusedField: @escaping @MainActor (NSRunningApplication) -> FieldCapture = {
             BackgroundTextReplacer.readFocusedField(in: $0)
         },
-        activateForCapture: @escaping @MainActor (NSRunningApplication) async -> Void = { application in
-            guard !application.isTerminated else { return }
-            application.activate()
-            for _ in 0..<20 {
-                if application.isActive { return }
-                try? await Task.sleep(for: .milliseconds(25))
-            }
+        activateForCapture: @escaping @MainActor (NSRunningApplication) async -> Void = {
+            await BackgroundTextReplacer.activateForCapture($0)
+        },
+        expandSelection: @escaping @MainActor (NSRunningApplication) async -> FieldCapture? = {
+            await BackgroundTextReplacer.selectAllText(in: $0)
         },
         replaceText: @escaping @MainActor (String, any TextPasteTarget, Bool, Bool) async throws -> Void = {
             try await BackgroundTextReplacer.replace($0, in: $1, allowWholeField: $2, selectionOnly: $3)
@@ -51,6 +50,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         self.captureTarget = captureTarget
         self.readFocusedField = readFocusedField
         self.activateForCapture = activateForCapture
+        self.expandSelection = expandSelection
         self.replaceText = replaceText
     }
 
@@ -115,13 +115,8 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
             historyFocusNeedsRestore = state.screen == .history
             fitPanelToContent()
         } else {
-            closeAndRestoreApplication()
+            hide()
         }
-    }
-
-    private func closeAndRestoreApplication() {
-        hide()
-        restorePreviousApplication()
     }
 
     func hide() {
@@ -157,7 +152,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
     func copyAndDismiss() {
         guard state.canUseResponse else { return }
         writeToPasteboard(state.response)
-        closeAndRestoreApplication()
+        hide()
     }
 
     func replaceAndDismiss() {
@@ -318,7 +313,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
                 screen.visibleFrame.maxX - width - 12
             )
         }
-        panel.setFrame(frame, display: true)
+        if panel.frame != frame { panel.setFrame(frame, display: true) }
         if isShowingHistory, historyFocusNeedsRestore {
             restoreHistoryFocus()
         }
@@ -365,11 +360,6 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(string, forType: .string)
-    }
-
-    private func restorePreviousApplication() {
-        guard let application = previousApplication, !application.isTerminated else { return }
-        application.activate()
     }
 
     private func rememberTarget(
@@ -483,20 +473,12 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
             selectionUnreadable: read.selectionUnreadable
         ) {
             await activateForCapture(application)
-            read = readFocusedField(application)
-            if await BackgroundTextReplacer.selectAllText(in: application) != nil {
-                read = readFocusedField(application)
-                let expanded = FieldTextChoice.interpret(
-                    elementFound: read.elementFound,
-                    isSecure: read.isSecure,
-                    selectedText: read.selectedText,
-                    fieldValue: read.fieldValue,
-                    selectionUnreadable: read.selectionUnreadable
-                )
-                // The select-all doubles as the Replace target, so only a real
-                // selection replaces the earlier outcome. Otherwise the fragment or
-                // the empty-field message stands.
-                if case .selection = expanded { outcome = expanded }
+            if let expanded = await expandSelection(application),
+               let text = expanded.selectedText, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                read = expanded
+                outcome = .selection(text)
+            } else {
+                outcome = .unreadable
             }
         }
 
@@ -519,7 +501,7 @@ final class FloatingPanelController: NSObject, NSWindowDelegate {
         target: any TextPasteTarget,
         selectionOnly: Bool
     ) {
-        let captured = PromptRequest(prompt: request.prompt, input: input, title: request.title)
+        let captured = request.appending(input)
         selectionOnlyRequest = selectionOnly ? captured : nil
         replacementTarget = target
         state.start(captured)

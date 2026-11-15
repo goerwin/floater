@@ -10,7 +10,7 @@ final class HistoryStoreTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let fileURL = directory.appendingPathComponent("Floater/history.json")
         let store = HistoryStore(fileURL: fileURL)
-        let request = PromptRequest(prompt: "Translate\nthis", input: "Hola 👋", title: "Translation")
+        let request = PromptRequest(prompt: "Translate\nthis\n\nHola 👋", title: "Translation")
         store.record(request, response: "Hello 👋\nWorld")
         store.record(PromptRequest(prompt: "Second"), response: "Another result")
 
@@ -45,7 +45,7 @@ final class HistoryStoreTests: XCTestCase {
 
     func testSearchIncludesTitlePromptInputAndResponse() {
         let entry = HistoryEntry(
-            request: PromptRequest(prompt: "Translate", input: "Hola", title: "Spanish"),
+            request: PromptRequest(prompt: "Translate\n\nHola", title: "Spanish"),
             response: "Hello"
         )
         for query in ["", "  ", "SPANISH", "translate", " hola ", "hello"] {

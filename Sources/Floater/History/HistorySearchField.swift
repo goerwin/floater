@@ -9,7 +9,7 @@ struct HistorySearchField: NSViewRepresentable {
     func makeNSView(context: Context) -> NSSearchField {
         let field = NSSearchField()
         field.delegate = context.coordinator
-        field.placeholderString = "Search prompts, input, and responses (\(PanelShortcut.find.label))"
+        field.placeholderString = "Search prompts and responses (\(PanelShortcut.find.label))"
         field.identifier = NSUserInterfaceItemIdentifier("historySearch")
         field.setAccessibilityLabel("Search history")
         return field

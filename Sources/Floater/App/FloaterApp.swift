@@ -25,6 +25,7 @@ struct FloaterApp: App {
 
             Divider()
 
+            ModelMenu(settings: appDelegate.settings)
             ReplacementSetting(settings: appDelegate.settings)
             AccessibilityMenu(accessibility: appDelegate.accessibility)
 

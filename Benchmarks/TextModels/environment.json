@@ -1,0 +1,12 @@
+{
+  "date": "2026-11-14",
+  "chip": "Apple M3 Pro",
+  "memory_gib": 18,
+  "cpu_cores": 11,
+  "packages": {
+    "mlx-lm": "0.32.2_1",
+    "mlx": "0.32.4",
+    "llama.cpp": "Homebrew 1.0.0, build b12359"
+  },
+  "mlx_python": "/opt/homebrew/opt/mlx-lm/libexec/bin/python"
+}

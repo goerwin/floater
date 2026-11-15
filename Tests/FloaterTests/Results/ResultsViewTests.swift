@@ -21,7 +21,7 @@ final class ResultsViewTests: XCTestCase {
         XCTAssertNil(buttons(in: window.contentView!).first { $0.accessibilityLabel() == "Enable Accessibility" })
         access.request()
         XCTAssertEqual(requests, 1)
-        sendKey("r", code: 15, modifiers: [.command, .shift], to: window)
+        sendKey("s", code: 1, modifiers: .command, to: window)
         XCTAssertEqual(replacements, 0)
         granted = true
         access.refresh()
@@ -29,6 +29,8 @@ final class ResultsViewTests: XCTestCase {
         XCTAssertTrue(replace.isEnabled)
         XCTAssertNil(buttons(in: window.contentView!).first { $0.accessibilityLabel() == "Enable Accessibility" })
         sendKey("r", code: 15, modifiers: [.command, .shift], to: window)
+        XCTAssertEqual(replacements, 0)
+        sendKey("s", code: 1, modifiers: .command, to: window)
         XCTAssertEqual(replacements, 1)
         granted = false
         access.refresh()
@@ -104,7 +106,7 @@ final class ResultsViewTests: XCTestCase {
 
     func testResultsCopyAndEditShortcuts() throws {
         let model = FloaterState(provider: TestProvider())
-        let request = PromptRequest(prompt: "Translate", input: "Hola\nMundo", title: "Translation")
+        let request = PromptRequest(prompt: "Translate\n\nHola\nMundo", title: "Translation")
         model.restore(HistoryEntry(request: request, response: "Hello\nWorld"))
         var copies = 0
         let window = makeWindow(state: model, onCopy: { copies += 1 })
@@ -113,7 +115,7 @@ final class ResultsViewTests: XCTestCase {
         XCTAssertEqual(copies, 1)
         sendKey("e", code: 14, modifiers: .command, to: window)
         XCTAssertNil(model.currentRequest)
-        XCTAssertEqual(textViews(in: window.contentView!).map(\.string), [request.prompt, request.input])
+        XCTAssertEqual(textViews(in: window.contentView!).map(\.string), [request.prompt])
         sendKey("e", code: 14, modifiers: .command, to: window)
         XCTAssertNil(model.currentRequest)
         XCTAssertEqual(copies, 1)
@@ -123,7 +125,7 @@ final class ResultsViewTests: XCTestCase {
         let model = FloaterState(provider: TestProvider())
         let controller = FloatingPanelController(state: model)
         let entry = HistoryEntry(
-            request: PromptRequest(prompt: "Translate", input: "Hola\nMundo", title: "Saved translation"),
+            request: PromptRequest(prompt: "Translate\n\nHola\nMundo", title: "Saved translation"),
             response: "Hello\nWorld"
         )
         model.restore(entry)
@@ -138,7 +140,7 @@ final class ResultsViewTests: XCTestCase {
         sendKey("\t", code: 48, modifiers: .option, to: window)
         sendKey("\r", code: 36, to: window)
         XCTAssertNil(model.currentRequest)
-        XCTAssertEqual(textViews(in: window.contentView!).map(\.string), [entry.request.prompt, entry.request.input])
+        XCTAssertEqual(textViews(in: window.contentView!).map(\.string), [entry.request.prompt])
         sendKey("\r", code: 36, modifiers: .command, to: window)
         XCTAssertEqual(model.currentRequest, entry.request)
     }

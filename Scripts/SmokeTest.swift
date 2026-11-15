@@ -54,6 +54,7 @@ private final class AppSmokeTest {
             self.element("run").map { self.attribute($0, kAXEnabledAttribute) as? Bool == false } == true
         }
         print("PASS: app bundle launches through macOS without development flags")
+        try checkModelSelection()
 
         try menu("History")
         try wait("History menu action") { self.element("historySearch") != nil }
@@ -81,11 +82,10 @@ private final class AppSmokeTest {
         try checkDragBehavior()
 
         let title = "CLI smoke \(UUID().uuidString)"
-        try process(executable, ["--prompt", "Reply with OK.", "--input", "Smoke input", "--title", title])
+        try process(executable, ["--prompt", "Reply with OK.", "--title", title])
         try wait("bundled CLI URL delivery") { self.windows.contains { self.string($0, kAXTitleAttribute) == title } }
-        try wait("Foundation Models response", timeout: 45) {
-            let generating = self.descendants(self.root).contains { self.string($0, kAXDescriptionAttribute) == "Generating response" }
-            return !generating && (self.element("responseText") != nil || self.texts.contains { $0.contains("Apple Intelligence") && !$0.contains("Thinking") })
+        try wait("Gemma response", timeout: 90) {
+            self.element("copy").map { self.attribute($0, kAXEnabledAttribute) as? Bool == true } == true
         }
         if let response = element("responseText") {
             try wait("result takes keyboard focus") {
@@ -102,9 +102,9 @@ private final class AppSmokeTest {
             try check(try bounds(window).origin == frame.origin, "Selecting response text must not move the window")
             let summary = try require(descendants(window).first { string($0, kAXHelpAttribute).contains("Show full prompt") }, "Prompt summary button missing")
             try checkStationaryDrag(summary, label: "prompt summary")
-            print("PASS: bundled CLI delivers a request to Foundation Models")
+            print("PASS: bundled CLI delivers a request to Gemma 4 E4B")
         } else {
-            print("SKIP: model generation unavailable on this Mac; CLI delivery and availability message verified")
+            throw SmokeFailure(description: "Gemma response is missing")
         }
 
         try menu("Quit Floater \(info["CFBundleShortVersionString"] as? String ?? "")")
@@ -117,6 +117,7 @@ private final class AppSmokeTest {
         try launch(url: try require(components.url, "Cannot encode smoke URL"))
         try wait("cold URL launch") { self.windows.contains { self.string($0, kAXTitleAttribute) == coldTitle } }
         try check(element("prompt") == nil, "Cold URL launch must not replace the request with New")
+        try checkSelectedModel("Gemma 4 E4B")
         print("PASS: cold URL launch and Quit menu action")
         print("Smoke tests passed.")
     }
@@ -144,17 +145,58 @@ private final class AppSmokeTest {
     }
 
     func menu(_ title: String) throws {
-        let extras = try require(attribute(root, kAXExtrasMenuBarAttribute), "Floater status menu missing") as! AXUIElement
-        let item = try require(descendants(extras).first { string($0, kAXRoleAttribute) == kAXMenuBarItemRole }, "Floater status item missing")
-        AXUIElementSetMessagingTimeout(item, 1)
-        let result = AXUIElementPerformAction(item, kAXPressAction as CFString)
-        try check(result == .success || result == .cannotComplete, "Cannot open Floater's status menu: \(result.rawValue)")
+        let item = try openStatusMenu()
         var action: AXUIElement?
         try wait("menu item \(title)") {
             action = self.descendants(item).first { self.string($0, kAXTitleAttribute) == title }
             return action != nil
         }
         try press(action!)
+    }
+
+    func openStatusMenu() throws -> AXUIElement {
+        let extras = try require(attribute(root, kAXExtrasMenuBarAttribute), "Floater status menu missing") as! AXUIElement
+        let item = try require(descendants(extras).first { string($0, kAXRoleAttribute) == kAXMenuBarItemRole }, "Floater status item missing")
+        AXUIElementSetMessagingTimeout(item, 1)
+        let result = AXUIElementPerformAction(item, kAXPressAction as CFString)
+        try check(result == .success || result == .cannotComplete, "Cannot open Floater's status menu: \(result.rawValue)")
+        return item
+    }
+
+    func modelSubmenu(in item: AXUIElement) throws -> AXUIElement {
+        try require(descendants(item).first {
+            ["Gemma 4 E4B", "Apple Intelligence"].contains(string($0, kAXTitleAttribute))
+                && string($0, kAXRoleAttribute) == kAXMenuItemRole
+                && descendants($0).contains { string($0, kAXRoleAttribute) == kAXMenuRole }
+        }, "Model submenu missing")
+    }
+
+    func checkSelectedModel(_ expected: String) throws {
+        let item = try openStatusMenu()
+        let submenu = try modelSubmenu(in: item)
+        try check(string(submenu, kAXTitleAttribute) == expected, "Submenu must show the selected model")
+        let selected = descendants(submenu).filter {
+            string($0, kAXRoleAttribute) == kAXMenuItemRole && !string($0, kAXMenuItemMarkCharAttribute).isEmpty
+        }
+        try check(selected.count == 1 && string(selected[0], kAXTitleAttribute) == expected, "Selected model must have exactly one checkmark")
+        AXUIElementPerformAction(item, kAXCancelAction as CFString)
+    }
+
+    func checkModelSelection() throws {
+        for model in ["Apple Intelligence", "Gemma 4 E4B"] {
+            let item = try openStatusMenu()
+            let submenu = try modelSubmenu(in: item)
+            try press(submenu)
+            let option = try require(descendants(submenu).first {
+                string($0, kAXRoleAttribute) == kAXMenuItemRole && string($0, kAXTitleAttribute) == model
+            }, "Model option \(model) missing")
+            try press(option)
+            try wait("selected model \(model)") {
+                try self.string(self.modelSubmenu(in: item), kAXTitleAttribute) == model
+            }
+            try checkSelectedModel(model)
+        }
+        print("PASS: model submenu label, checkmarks, and selection")
     }
 
     func checkDragBehavior() throws {

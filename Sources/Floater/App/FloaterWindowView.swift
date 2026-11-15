@@ -27,7 +27,8 @@ struct FloaterWindowView: View {
                     .gesture(WindowDragGesture())
                     .allowsWindowActivationEvents(true)
             }
-            .onReceive(state.objectWillChange) { _ in onContentChange() }
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { _ in onContentChange() }
+            .onChange(of: state.windowTitle) { _, _ in onContentChange() }
             .onChange(of: state.currentRequest) { _, _ in focusRequest() }
             .onChange(of: state.screen) { _, _ in focusRequest() }
             .onChange(of: accessibility.isGranted) { _, _ in onContentChange() }
@@ -44,7 +45,7 @@ struct FloaterWindowView: View {
                     Divider()
                     if state.screen == .newRequest {
                         NewRequestView(
-                            prompt: $state.prompt, input: $state.input, canSubmit: state.canSubmit, focusedControl: $focusedControl,
+                            prompt: $state.prompt, canSubmit: state.canSubmit, focusedControl: $focusedControl,
                             onSubmit: submit, onDismiss: onDismiss, onContentChange: onContentChange
                         )
                     } else {
@@ -173,7 +174,7 @@ struct FloaterWindowView: View {
     private func moveFocus(backwards: Bool, in window: NSWindow) {
         let controls: [PanelControl]
         if state.screen == .newRequest {
-            controls = [.prompt, .input, .dismiss] + (state.canSubmit ? [.run] : []) + [.history, .new]
+            controls = [.prompt, .dismiss] + (state.canSubmit ? [.run] : []) + [.history, .new]
         } else {
             controls = (state.canUseResponse ? [.copy, .edit] : [.edit])
                 + (canReplace ? [.replace] : [])

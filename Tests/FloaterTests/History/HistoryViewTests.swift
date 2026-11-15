@@ -67,7 +67,7 @@ final class HistoryViewTests: XCTestCase {
 
     func testDismissSavedResponseReturnsToHistoryWithSearchAndSelection() throws {
         let store = HistoryStore(fileURL: nil)
-        store.record(PromptRequest(prompt: "Translate", input: "Hola"), response: "Hello")
+        store.record(PromptRequest(prompt: "Translate\n\nHola"), response: "Hello")
         store.record(PromptRequest(prompt: "Other"), response: "Other result")
         let window = makeWindow(store: store)
         defer { controller?.hide() }
@@ -216,7 +216,7 @@ final class HistoryViewTests: XCTestCase {
     }
     func testSelectedHistoryResultOpensWithReturn() throws {
         let store = HistoryStore(fileURL: nil)
-        store.record(PromptRequest(prompt: "Translate", input: "Hola", title: "Translation"), response: "Hello")
+        store.record(PromptRequest(prompt: "Translate\n\nHola", title: "Translation"), response: "Hello")
         let window = makeWindow(store: store)
         defer { window.close() }
         let list = try XCTUnwrap(descendants(of: NSTableView.self, in: window.contentView!).first)
@@ -248,8 +248,8 @@ final class HistoryViewTests: XCTestCase {
 
     func testSearchFiltersHistoryByOriginalInput() throws {
         let store = HistoryStore(fileURL: nil)
-        store.record(PromptRequest(prompt: "Translate", input: "Hola"), response: "Hello")
-        store.record(PromptRequest(prompt: "Summarize", input: "Other text"), response: "Summary")
+        store.record(PromptRequest(prompt: "Translate\n\nHola"), response: "Hello")
+        store.record(PromptRequest(prompt: "Summarize\n\nOther text"), response: "Summary")
         let window = makeWindow(store: store)
         defer { window.close() }
         let root = try XCTUnwrap(window.contentView?.superview)
@@ -265,7 +265,7 @@ final class HistoryViewTests: XCTestCase {
         list.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         settle(window)
         sendKey("\r", code: 36, to: window)
-        XCTAssertEqual(model?.currentRequest?.input, "Hola")
+        XCTAssertEqual(model?.currentRequest?.prompt, "Translate\n\nHola")
     }
 
     private func makeWindow(

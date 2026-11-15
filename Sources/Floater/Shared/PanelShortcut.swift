@@ -6,7 +6,6 @@ enum PanelShortcut {
     var label: String {
         switch self {
         case .dismiss: "⎋"
-        case .replace: "⌘⇧R"
         default: "⌘" + keyEquivalent.uppercased()
         }
     }
@@ -15,7 +14,7 @@ enum PanelShortcut {
         switch self {
         case .copy: "c"
         case .edit: "e"
-        case .replace: "r"
+        case .replace: "s"
         case .dismiss: "\u{1b}"
         case .history: "h"
         case .run: "r"
@@ -27,7 +26,6 @@ enum PanelShortcut {
     var modifiers: NSEvent.ModifierFlags {
         switch self {
         case .dismiss: []
-        case .replace: [.command, .shift]
         default: .command
         }
     }

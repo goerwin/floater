@@ -46,49 +46,24 @@ struct ResultsView: View {
 
     @ViewBuilder
     private var resultContent: some View {
-        let height = resultContentHeight
-
         if state.errorMessage == nil && state.response.isEmpty && state.isGenerating {
             HStack(spacing: 8) {
                 ProgressView()
                     .controlSize(.small)
-                Text("Thinking with Apple Intelligence…")
+                Text(state.preparationMessage)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: height)
+            .frame(height: min(36, resultContentHeightLimit))
         } else {
-            ScrollView {
-                responseText
-                    .font(.system(size: 13))
-                    .foregroundStyle(state.errorMessage == nil ? Color.primary : Color.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 2)
-            }
-            .frame(height: height)
-            .accessibilityIdentifier("responseText")
+            ResponseText(
+                text: displayedText, isGenerating: state.isGenerating,
+                isSelectable: state.canUseResponse, isError: state.errorMessage != nil,
+                maximumHeight: resultContentHeightLimit
+            )
+            .id(state.resultID)
         }
-    }
-
-    @ViewBuilder
-    private var responseText: some View {
-        if state.canUseResponse {
-            Text(displayedText).textSelection(.enabled)
-        } else {
-            Text(displayedText).textSelection(.disabled)
-        }
-    }
-
-    private var resultContentHeight: CGFloat {
-        let maximumHeight = resultContentHeightLimit
-
-        if state.errorMessage == nil && state.isGenerating && state.response.isEmpty {
-            return min(36, maximumHeight)
-        }
-
-        let height = measuredTextHeight(displayedText, width: FloaterPanelLayout.contentWidth, fontSize: 13) + 4
-        return min(maximumHeight, max(18, height))
     }
 
     private var resultContentHeightLimit: CGFloat {
@@ -107,9 +82,9 @@ struct ResultsView: View {
     }
 
     private func summaryHeight(for text: String) -> CGFloat {
-        let measured = measuredTextHeight(text, width: FloaterPanelLayout.contentWidth, fontSize: 12)
         let font = NSFont.systemFont(ofSize: 12)
         let twoLineMaximum = (font.ascender - font.descender + font.leading) * 2
+        let measured = measuredTextHeight(text, width: FloaterPanelLayout.contentWidth, fontSize: 12, limit: twoLineMaximum)
         return min(twoLineMaximum, measured)
     }
 
@@ -119,10 +94,10 @@ struct ResultsView: View {
             : summaryHeight(for: text)
     }
 
-    private func measuredTextHeight(_ text: String, width: CGFloat, fontSize: CGFloat) -> CGFloat {
+    private func measuredTextHeight(_ text: String, width: CGFloat, fontSize: CGFloat, limit: CGFloat = .greatestFiniteMagnitude) -> CGFloat {
         let font = NSFont.systemFont(ofSize: fontSize)
         let bounds = (text as NSString).boundingRect(
-            with: NSSize(width: width, height: .greatestFiniteMagnitude),
+            with: NSSize(width: width, height: limit),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: [.font: font]
         )

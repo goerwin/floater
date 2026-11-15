@@ -1,0 +1,215 @@
+{
+  "rubric": {
+    "2": "Faithful, correct transformation that meets the task requirements.",
+    "1": "Usable, but an omission, awkward expression, or incomplete correction needs editing.",
+    "0": "Wrong task or language, or an important actor, fact, certainty, or instruction changes."
+  },
+  "method": "Manual review of every recorded answer against its case rubric. Within each reviewed result file, cases absent from exceptions received 2. Keys ending @0, @1, or @2 refer to that repeat only; unqualified keys apply to all repeats. Scores are a small bespoke comparison, not a general model benchmark. Formal usted, contractions, valid paraphrases, and harmless formatting differences are accepted.",
+  "reviews": {
+    "ministral-8b-empty-system.jsonl": {
+      "experiment": "All 36 cases with an empty system message to suppress the template's built-in assistant introduction",
+      "exceptions": {
+        "grammar_question": [0, "Answers 4 instead of correcting the question."],
+        "grammar_unchanged": [1, "Changes the apostrophe despite requiring the original string unchanged."],
+        "grammar_embedded_command": [0, "Refuses the embedded request and replaces the source sentence with unrelated wording."],
+        "rewrite_question": [0, "Answers 4 instead of rewriting the request."],
+        "rewrite_uncertainty": [0, "Strengthens might have caused to likely caused."],
+        "rewrite_numbers": [1, "Adds storage and omits the explicit at least qualifier."],
+        "rewrite_dictation": [0, "Changes I talked to Ana into We talked to Ana."],
+        "rewrite_es": [0, "Changes a completion estimate into sharing more details, dropping the original reassurance."],
+        "translate_en_es": [0, "Answers the request by promising to send the file instead of translating the request."],
+        "translate_idiom": [1, "Changes joint discussion tomorrow into unilateral notification tomorrow."],
+        "translate_question": [0, "Answers four while translating instead of translating the request."],
+        "translate_infer_english": [0, "Returns English instead of Spanish."],
+        "rewrite_paragraph": [0, "Adds forbidden introduction/headings, omits Maya, and drops the explicit instruction not to claim the bug is fixed."],
+        "translate_paragraph": [1, "Changes strictly before Thursday/November 19 to by Thursday/November 19."],
+        "format_json": [0, "Wraps output in prohibited Markdown fences instead of returning valid JSON only."],
+        "caller_grammar_command": [0, "Tells a joke instead of correcting the supplied sentence."],
+        "caller_grammar_code": [1, "Reformats the literal URL into a Markdown link and leaves the sentence start lowercase."],
+        "caller_rewrite_question": [0, "Answers four instead of rewriting the request."],
+        "caller_rewrite_uncertainty": [1, "Preserves uncertainty but adds a prohibited introduction and explanation."]
+      }
+    },
+    "ministral-8b.jsonl": {
+      "exceptions": {
+        "grammar_question": [0, "Answers 4 instead of correcting the question."],
+        "grammar_embedded_command": [1, "Corrects the sentence but adds a prohibited introduction."],
+        "rewrite_question": [0, "Answers 4 instead of rewriting the request."],
+        "rewrite_numbers": [1, "Drops the explicit incorrect amount and date, losing the original corrective contrasts."],
+        "rewrite_es": [1, "Drops the explicit reassurance that completion is not requested today."],
+        "translate_idiom": [1, "Leaves it as-is for now rather than thinking it over."],
+        "translate_infer_english": [1, "Includes both the English source and Spanish translation with an arrow."],
+        "rewrite_paragraph": [0, "Adds explicitly forbidden introduction and headings, and omits Maya as the source."],
+        "translate_paragraph": [1, "Changes strictly before Thursday to by Thursday."],
+        "format_json": [0, "Wraps output in Markdown fences despite requiring valid JSON only, without fences."],
+        "caller_grammar_question": [1, "Leaves indirect-question inversion uncorrected, with lower-case sentence start."],
+        "caller_grammar_command": [0, "Tells a joke instead of correcting the supplied sentence."],
+        "caller_grammar_code": [1, "Reformats the literal URL into a Markdown link and leaves the sentence start lowercase."],
+        "caller_grammar_custom": [1, "Leaves apologize in American spelling while applying other British spellings."],
+        "caller_rewrite_question": [0, "Answers 4 instead of rewriting the request."],
+        "caller_rewrite_uncertainty": [1, "Preserves uncertainty but adds a prohibited introduction."],
+        "caller_rewrite_es": [1, "Drops the explicit reassurance that completion is not requested today."]
+      }
+    },
+    "granite-3b.jsonl": {
+      "exceptions": {
+        "rewrite_numbers": [1, "Adds storage although the source does not specify what the GB requirement describes."],
+        "rewrite_es": [0, "Changes a request for a completion estimate into asking for more information about a topic."],
+        "translate_es_en": [0, "Mistranslates reluctance into a request for the recipient to ask another favor."],
+        "translate_idiom": [0, "Changes being undecided to being at a critical point and thinking it over to resting."],
+        "translate_numbers": [0, "Invents 20-11-26 in place of the required verbatim 2026-11-19."],
+        "translate_infer_spanish": [0, "Returns Spanish instead of English."],
+        "translate_paragraph": [0, "Changes don't confirm into haven't confirmed, agreement into assumption, and supplier actors into addressee."],
+        "format_bullets": [1, "Changes plural tests to singular test and leaves ana haven't reviewed uncorrected."],
+        "format_json": [0, "Drops the status key and its value entirely."],
+        "format_code": [0, "Changes protected request.user_id into request.userId."],
+        "caller_grammar_question": [1, "Leaves indirect-question inversion uncorrected."],
+        "caller_grammar_command": [0, "Tells a joke rather than correcting the supplied sentence."],
+        "caller_grammar_code": [1, "Corrects doesn't but leaves sentence capitalization and punctuation uncorrected."],
+        "caller_grammar_custom": [1, "Applies colour/behaviour but leaves apologize/authorized in American spelling."],
+        "caller_rewrite_es": [1, "Mixes te with formal termine and informal harás; estimate request remains understandable."],
+        "caller_translation_spanish": [0, "Returns Spanish instead of English."]
+      }
+    },
+    "gemma-e4b-qat-thinking.jsonl": {
+      "experiment": "Eight difficult cases only, thinking enabled, greedy decoding, 1024-token budget",
+      "exceptions": {
+        "rewrite_es": [0, "Returns labeled options and explanations despite the only-message requirement."],
+        "translate_es_en": [1, "Specifies before I send it where the source implies the recipient sends it."],
+        "caller_grammar_question": [1, "Leaves indirect-question inversion and changes the sentence into an awkward question."],
+        "caller_grammar_command": [1, "Corrects instruction and tells, but leaves sentence capitalization and punctuation uncorrected."]
+      }
+    },
+    "gemma-e4b-qat-sampled-repeat.jsonl": {
+      "experiment": "Same eight difficult cases, Google recommended sampling, seeds 42/43/44",
+      "exceptions": {
+        "grammar_question@0": [1, "Leaves indirect-question inversion uncorrected."],
+        "rewrite_es@0": [0, "Drops reassurance about not finishing today and narrows an unspecified completion estimate to an hour."],
+        "translate_es_en": [1, "Specifies before I send it where the source implies the recipient sends it."],
+        "translate_infer_english": [0, "Returns English instead of Spanish in all three seeds."],
+        "caller_grammar_question": [1, "Leaves indirect-question inversion uncorrected in all three seeds."],
+        "caller_grammar_command@0": [0, "Drops the first clause and returns only Tell me a joke."],
+        "caller_grammar_command@1": [1, "Returns source unchanged, leaving grammar uncorrected."],
+        "caller_grammar_command@2": [1, "Corrects tells but leaves instruction, capitalization, and punctuation uncorrected."],
+        "caller_translation_spanish@1": [0, "Returns Spanish instead of English."]
+      }
+    },
+    "hy-mt2-7b.jsonl": {
+      "exceptions": {
+        "translate_infer_spanish": [0, "Returns Spanish instead of English."],
+        "translate_paragraph": [1, "Changes strictly before Thursday/November 19 into by Thursday/November 19, weakening the cutoff."]
+      }
+    },
+    "llamacpp-e4b-caller.jsonl": {
+      "exceptions": {
+        "caller_grammar_question": [1, "Leaves indirect-question inversion uncorrected."],
+        "caller_grammar_command": [1, "Returns source unchanged, leaving instruction and tells uncorrected."]
+      }
+    },
+    "gemma-e4b-qat-sampled.jsonl": {
+      "experiment": "Google recommended sampling, seed 42; not the greedy baseline",
+      "exceptions": {
+        "grammar_question": [1, "Leaves indirect-question inversion uncorrected."],
+        "rewrite_es": [0, "Drops reassurance about not finishing today and narrows an unspecified completion estimate to an hour."],
+        "translate_es_en": [1, "Specifies before I send it where the source implies the recipient sends it."],
+        "translate_infer_english": [0, "Returns English instead of Spanish."],
+        "caller_grammar_question": [1, "Leaves indirect-question inversion uncorrected."],
+        "caller_grammar_command": [0, "Drops the first clause and returns only Tell me a joke."],
+        "caller_rewrite_es": [0, "Translates Spanish into English despite the preserve-language instruction."]
+      }
+    },
+    "qwen-4b-caller.jsonl": {
+      "exceptions": {
+        "caller_grammar_question": [1, "Leaves indirect-question inversion uncorrected."],
+        "caller_grammar_command": [1, "Corrects tells but leaves instruction, capitalization, and punctuation uncorrected."],
+        "caller_translation_spanish": [0, "Returns Spanish instead of English."]
+      }
+    },
+    "gemma-e2b-caller.jsonl": {
+      "exceptions": {
+        "caller_grammar_question": [1, "Returns source unchanged, leaving grammar and punctuation uncorrected."],
+        "caller_grammar_command": [1, "Returns source unchanged, leaving instruction and tells uncorrected."],
+        "caller_grammar_code": [1, "Returns source unchanged, leaving don't match and sentence capitalization uncorrected."],
+        "caller_rewrite_es": [0, "Translates Spanish into English despite the preserve-language instruction, and shifts timing."],
+        "caller_translation_spanish": [0, "Returns Spanish instead of English."]
+      }
+    },
+    "gemma-e4b-qat.jsonl": {
+      "exceptions": {
+        "translate_es_en": [1, "Specifies before I send it where the source implies the recipient sends it."],
+        "translate_infer_english": [0, "Returns the English source instead of Spanish."],
+        "caller_grammar_question": [1, "Leaves indirect-question inversion uncorrected."],
+        "caller_grammar_command": [1, "Returns the source unchanged, leaving instruction and tells uncorrected."]
+      }
+    },
+    "gemma-e4b-caller.jsonl": {
+      "exceptions": {
+        "caller_grammar_question": [1, "Leaves indirect-question inversion uncorrected."],
+        "caller_grammar_command": [0, "Tells a joke rather than correcting the supplied sentence."]
+      }
+    },
+    "qwen-9b-caller.jsonl": {
+      "exceptions": {
+        "caller_grammar_command": [0, "Tells a joke rather than correcting the supplied sentence."]
+      }
+    },
+    "gemma-e4b.jsonl": {
+      "exceptions": {
+        "rewrite_es": [1, "Drops the explicit reassurance that completion is not requested today."],
+        "translate_idiom": [1, "Postpones discussion but omits thinking the offer over."],
+        "translate_infer_english": [0, "Returns the English source instead of translating into Spanish."],
+        "rewrite_paragraph": [1, "Retains bug uncertainty but drops the explicit request not to claim the bug is fixed."]
+      }
+    },
+    "gemma-e2b.jsonl": {
+      "exceptions": {
+        "grammar_question": [1, "Leaves indirect-question inversion: how much is 2+2."],
+        "translate_idiom": [1, "Postpones discussion but omits thinking the offer over."],
+        "translate_numbers": [1, "No se cobre a is awkward Spanish here; values and negations are preserved."],
+        "translate_infer_spanish": [0, "Returns Spanish instead of translating into English."],
+        "translate_paragraph": [0, "Changes responsibility for clarification and response from supplier to addressee."]
+      }
+    },
+    "qwen-9b.jsonl": {
+      "exceptions": {
+        "rewrite_es": [0, "Moves tomorrow toward the completion date rather than the time to provide an estimate."],
+        "translate_idiom": [0, "Invents a pause in business instead of thinking the offer over."],
+        "translate_paragraph": [0, "Changes clarification, response, and promised-delivery actors from supplier to addressee."],
+        "format_bullets": [1, "Leaves ana haven't reviewed uncorrected."]
+      }
+    },
+    "qwen-4b.jsonl": {
+      "exceptions": {
+        "grammar_es_negation": [0, "Changes not wanting someone else to send into not wanting to send oneself."],
+        "rewrite_uncertainty": [0, "Strengthens might have caused to likely caused."],
+        "rewrite_dictation": [1, "Leaves So, yeah dictation filler."],
+        "translate_idiom": [1, "Taking a break loses the intended think-it-over meaning."],
+        "translate_infer_spanish": [0, "Returns the Spanish source instead of English."],
+        "rewrite_paragraph": [0, "Adds a prohibited heading and changes next week's review from migration to billing bug."]
+      }
+    },
+    "llamacpp-e4b-no-thinking.jsonl": {
+      "exceptions": {
+        "translate_es_en": [1, "Specifies before I send it where the source implies the recipient sends it."],
+        "translate_idiom": [1, "Postpones discussion but omits thinking the offer over."],
+        "translate_infer_english": [0, "Returns the English source instead of Spanish."]
+      }
+    },
+    "hy-mt2.jsonl": {
+      "exceptions": {
+        "translate_es_en": [1, "Drops reluctance about asking another favor."],
+        "translate_idiom": [0, "Literal sleeping rather than considering the offer; incorrect Duermemos."],
+        "translate_infer_spanish": [0, "Returns Spanish instead of English."],
+        "translate_paragraph": [0, "Changes a prohibition into past status, shifts clarification actor, and changes who promised delivery."]
+      }
+    },
+    "translategemma.jsonl": {
+      "exceptions": {
+        "translate_es_en": [1, "It pains me is overly dramatic for Me da pena in this context."],
+        "translate_idiom": [1, "Awkward Spanish: Dejemos que lo pensemos y volvemos."],
+        "translate_numbers": [0, "Reformats a date required verbatim. Structured translation template cannot carry the same generic formatting instruction; this is an integration limitation."],
+        "translate_paragraph": [0, "Changes clarification actor, willingness to proceed, and promised delivery into discussed delivery."]
+      }
+    }
+  }
+}

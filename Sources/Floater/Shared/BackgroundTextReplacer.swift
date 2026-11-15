@@ -30,6 +30,11 @@ protocol TextPasteTarget {
     func focus() async throws
     func checkFocus() throws
     func send(_ command: PasteCommand) throws
+    func selectAll() async throws
+}
+
+extension TextPasteTarget {
+    func selectAll() async throws { try send(.selectAll) }
 }
 
 enum TextReplacementError: LocalizedError {
@@ -78,16 +83,13 @@ enum TextReplacement {
             case .none:
                 guard allowWholeField else { throw TextReplacementError.selectionRequired }
                 try target.checkFocus()
-                try target.send(.selectAll)
-                // Let the editor handle Select All before it receives Paste.
-                try await Task.sleep(for: .milliseconds(80))
+                try await target.selectAll()
             case .unavailable:
                 throw TextReplacementError.invalidSelection
             }
         }
         try target.checkFocus()
         try target.send(.paste)
-        try? await Task.sleep(for: .milliseconds(100))
     }
 }
 
@@ -121,36 +123,44 @@ enum BackgroundTextReplacer {
         )
     }
 
-    static func selectAllText(in application: NSRunningApplication) async -> String? {
-        guard sendSelectAllKeys(to: application) else { return nil }
-        for _ in 0..<20 {
-            try? await Task.sleep(for: .milliseconds(50))
-            guard !application.isTerminated else { return nil }
-            if let text = readFocusedField(in: application).selectedText,
-               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return text
-            }
-        }
-        return nil
+    static func activateForCapture(_ application: NSRunningApplication) async {
+        let element = AXUIElementCreateApplication(application.processIdentifier)
+        AXUIElementSetMessagingTimeout(element, 0.5)
+        AXUIElementSetAttributeValue(element, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        _ = await AccessibilityWaiter().wait(
+            processID: application.processIdentifier, elements: [element],
+            notifications: [kAXApplicationActivatedNotification, kAXFocusedUIElementChangedNotification],
+            isReady: {
+                guard application.isActive else { return false }
+                var focused: CFTypeRef?
+                return AXUIElementCopyAttributeValue(element, kAXFocusedUIElementAttribute as CFString, &focused) == .success
+            },
+            perform: { application.activate() }
+        )
     }
 
-    private static func sendSelectAllKeys(to application: NSRunningApplication) -> Bool {
-        guard let source = CGEventSource(stateID: .privateState) else { return false }
-        let strokes: [(CGKeyCode, CGEventFlags)] = [
-            (CGKeyCode(kVK_ANSI_A), .maskCommand),
-        ]
-        for (key, flags) in strokes {
-            guard let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
-                  let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false) else {
-                return false
-            }
-            down.flags = flags
-            up.flags = flags
-            down.postToPid(application.processIdentifier)
-            Thread.sleep(forTimeInterval: 0.1)
-            up.postToPid(application.processIdentifier)
-        }
-        return true
+    static func selectAllText(in application: NSRunningApplication) async -> FieldCapture? {
+        let target = AccessibilityPasteTarget(application: application)
+        guard let element = target.focusedElement, (try? target.checkFocus()) != nil else { return nil }
+        var captured: FieldCapture?
+        let ready = await AccessibilityWaiter().wait(
+            processID: application.processIdentifier, elements: [target.appElement, element],
+            notifications: [kAXSelectedTextChangedNotification, kAXValueChangedNotification, kAXFocusedUIElementChangedNotification],
+            isReady: {
+                guard (try? target.checkFocus()) != nil else { return false }
+                let snapshot = target.captureSnapshot()
+                guard let text = snapshot.selectedText,
+                      !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+                captured = FieldCapture(
+                    target: target, elementFound: snapshot.elementFound, isSecure: snapshot.isSecure,
+                    role: snapshot.role, selectedText: text, fieldValue: snapshot.fieldValue,
+                    selectionUnreadable: snapshot.selectionUnreadable
+                )
+                return true
+            },
+            perform: { try? target.send(.selectAll) }
+        )
+        return ready ? captured : nil
     }
 
     static func replace(
@@ -181,6 +191,8 @@ private final class AccessibilityPasteTarget: TextPasteTarget {
         if let window { AXUIElementSetMessagingTimeout(window, 0.5) }
         if let element { AXUIElementSetMessagingTimeout(element, 0.5) }
     }
+
+    var focusedElement: AXUIElement? { element }
 
     var selection: TextSelection {
         guard let element else { return .unavailable }
@@ -273,36 +285,41 @@ private final class AccessibilityPasteTarget: TextPasteTarget {
     }
 
     func focus() async throws {
-        guard !application.isTerminated, let window else {
-            throw TextReplacementError.noFocusedField
-        }
-        guard application.activate(),
-              AXUIElementPerformAction(window, kAXRaiseAction as CFString) == .success else {
-            throw TextReplacementError.noFocusedField
-        }
-        var requestedFocus = false
-        for _ in 0..<20 {
-            try await Task.sleep(for: .milliseconds(25))
-            guard !application.isTerminated else { break }
-            guard application.isActive,
-                  let focusedWindow = Self.attribute(kAXFocusedWindowAttribute, from: appElement),
-                  CFEqual(focusedWindow, window) else { continue }
-            // URL delivery can activate Floater before the external editor is readable.
-            if element == nil {
-                element = Self.element(kAXFocusedUIElementAttribute, from: appElement)
-                if let element { AXUIElementSetMessagingTimeout(element, 0.5) }
+        guard !application.isTerminated, let window else { throw TextReplacementError.noFocusedField }
+        let elements = [appElement, window] + [element].compactMap { $0 }
+        let ready = await AccessibilityWaiter().wait(
+            processID: application.processIdentifier, elements: elements,
+            notifications: [kAXApplicationActivatedNotification, kAXFocusedWindowChangedNotification, kAXFocusedUIElementChangedNotification],
+            isReady: {
+                if self.element == nil {
+                    self.element = Self.element(kAXFocusedUIElementAttribute, from: self.appElement)
+                    if let element = self.element { AXUIElementSetMessagingTimeout(element, 0.5) }
+                }
+                return (try? self.checkFocus()) != nil
+            },
+            perform: {
+                self.application.activate()
+                AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+                if let element = self.element {
+                    AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+                }
             }
-            guard let element else { continue }
-            if (try? checkFocus()) != nil {
-                try checkEditable(element)
-                return
-            }
-            if !requestedFocus {
-                AXUIElementSetAttributeValue(element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-                requestedFocus = true
-            }
-        }
-        throw TextReplacementError.noFocusedField
+        )
+        guard ready, let element else { throw TextReplacementError.noFocusedField }
+        try checkEditable(element)
+    }
+
+    func selectAll() async throws {
+        try checkFocus()
+        if captureSnapshot().fieldValue == "" { return }
+        guard let element else { throw TextReplacementError.noFocusedField }
+        let ready = await AccessibilityWaiter().wait(
+            processID: application.processIdentifier, elements: [appElement, element],
+            notifications: [kAXSelectedTextChangedNotification, kAXValueChangedNotification],
+            isReady: { (try? self.checkFocus()) != nil && self.selection == .selected },
+            perform: { try? self.send(.selectAll) }
+        )
+        guard ready else { throw TextReplacementError.invalidSelection }
     }
 
     private func checkEditable(_ element: AXUIElement) throws {

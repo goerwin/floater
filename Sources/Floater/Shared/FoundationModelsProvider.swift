@@ -4,11 +4,18 @@ import FloaterCore
 
 @MainActor
 protocol AIProvider {
+    var preparationMessage: String { get }
     func generate(_ request: PromptRequest, onUpdate: @MainActor (String) -> Void) async throws
+}
+
+extension AIProvider {
+    var preparationMessage: String { "Generating response…" }
 }
 
 @MainActor
 final class FoundationModelsProvider: AIProvider {
+    var preparationMessage: String { "Thinking with Apple Intelligence…" }
+
     func generate(
         _ request: PromptRequest,
         onUpdate: @MainActor (String) -> Void
@@ -17,15 +24,10 @@ final class FoundationModelsProvider: AIProvider {
             throw availabilityError()
         }
 
-        let session = LanguageModelSession(
-            instructions: "Follow the user's prompt and return the requested result."
-        )
-        let prompt = request.input.isEmpty
-            ? request.prompt
-            : "\(request.prompt)\n\n<transcript>\n\(request.input)\n</transcript>"
+        let session = LanguageModelSession()
 
         do {
-            for try await snapshot in session.streamResponse(to: prompt) {
+            for try await snapshot in session.streamResponse(to: request.prompt) {
                 try Task.checkCancellation()
                 onUpdate(snapshot.content)
             }
@@ -60,7 +62,7 @@ private enum ProviderError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unavailable(let message): message
-        case .inputTooLong: "This request is too long for Apple Intelligence. Shorten the prompt or input and try again."
+        case .inputTooLong: "This request is too long for Apple Intelligence. Shorten the prompt and try again."
         }
     }
 }

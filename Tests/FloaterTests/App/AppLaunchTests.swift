@@ -24,9 +24,8 @@ final class AppLaunchTests: XCTestCase {
 
         let window = try XCTUnwrap(application.windows.first { $0.isVisible && !existingWindows.contains($0) })
         let prompt = try XCTUnwrap(window.contentView?.firstDescendant(where: { $0.identifier?.rawValue == "prompt" }) as? NSTextView)
-        let input = try XCTUnwrap(window.contentView?.firstDescendant(where: { $0.identifier?.rawValue == "input" }) as? NSTextView)
         XCTAssertEqual(prompt.string, "")
-        XCTAssertEqual(input.string, "")
+        XCTAssertEqual(textViews(in: window.contentView!).count, 1)
         XCTAssertTrue(window.firstResponder === prompt)
 
         for mode in ["newRequest", "history", "hidden"] {
@@ -43,9 +42,8 @@ final class AppLaunchTests: XCTestCase {
 
             XCTAssertTrue(window.isVisible, mode)
             let reopenedPrompt = try XCTUnwrap(window.contentView?.firstDescendant(where: { $0.identifier?.rawValue == "prompt" }) as? NSTextView)
-            let reopenedInput = try XCTUnwrap(window.contentView?.firstDescendant(where: { $0.identifier?.rawValue == "input" }) as? NSTextView)
             XCTAssertEqual(reopenedPrompt.string, "", mode)
-            XCTAssertEqual(reopenedInput.string, "", mode)
+            XCTAssertEqual(textViews(in: window.contentView!).count, 1, mode)
             XCTAssertTrue(window.firstResponder === reopenedPrompt, mode)
         }
     }

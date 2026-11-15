@@ -10,13 +10,13 @@ final class FloaterStateTests: XCTestCase {
         let store = HistoryStore(fileURL: nil)
         let provider = ControlledProvider()
         let model = FloaterState(provider: provider, historyStore: store)
-        let request = PromptRequest(prompt: "First", input: "Input", title: "Title")
+        let request = PromptRequest(prompt: "First\n\nInput", title: "Title")
         model.start(request)
-        await waitUntil { provider.pending["First"] != nil }
+        await waitUntil { provider.pending[request.prompt] != nil }
         XCTAssertEqual(model.response, "Partial response")
         XCTAssertFalse(model.canUseResponse)
         XCTAssertTrue(store.entries.isEmpty)
-        provider.complete("First", response: "Final response")
+        provider.complete(request.prompt, response: "Final response")
         await waitUntil { !model.isGenerating }
         let entry = try XCTUnwrap(store.entries.first)
         XCTAssertEqual(entry.request, request)
@@ -73,7 +73,7 @@ final class FloaterStateTests: XCTestCase {
         XCTAssertFalse(copy.isEnabled)
         XCTAssertFalse(replace.isEnabled)
         sendKey("c", code: 8, modifiers: .command, to: window)
-        sendKey("r", code: 15, modifiers: [.command, .shift], to: window)
+        sendKey("s", code: 1, modifiers: .command, to: window)
         XCTAssertEqual(copies, 0)
         XCTAssertEqual(replacements, 0)
 
@@ -83,7 +83,7 @@ final class FloaterStateTests: XCTestCase {
         XCTAssertFalse(copy.isEnabled)
         XCTAssertFalse(replace.isEnabled)
         sendKey("c", code: 8, modifiers: .command, to: window)
-        sendKey("r", code: 15, modifiers: [.command, .shift], to: window)
+        sendKey("s", code: 1, modifiers: .command, to: window)
         XCTAssertEqual(copies, 0)
         XCTAssertEqual(replacements, 0)
 
@@ -95,7 +95,7 @@ final class FloaterStateTests: XCTestCase {
         XCTAssertTrue(copy.isEnabled)
         XCTAssertTrue(replace.isEnabled)
         sendKey("c", code: 8, modifiers: .command, to: window)
-        sendKey("r", code: 15, modifiers: [.command, .shift], to: window)
+        sendKey("s", code: 1, modifiers: .command, to: window)
         XCTAssertEqual(copies, 1)
         XCTAssertEqual(replacements, 1)
     }

@@ -5,6 +5,58 @@ import XCTest
 
 @MainActor
 final class CaptureInputTests: XCTestCase {
+    func testExpansionUsesTheConfirmedSelectionWithoutReadingItAgain() async throws {
+        let app = try runningApp()
+        let provider = CountingProvider()
+        let model = FloaterState(provider: provider)
+        let target = StubPasteTarget(selection: .selected)
+        var reads = 0
+        let controller = FloatingPanelController(
+            state: model,
+            accessibility: AccessibilityAccess(isTrusted: { true }, requestAccess: {}),
+            readFocusedField: { _ in
+                reads += 1
+                return FieldCapture(
+                    target: target, elementFound: true, isSecure: false, role: "AXTextArea",
+                    selectedText: "", fieldValue: "", selectionUnreadable: false
+                )
+            },
+            activateForCapture: { _ in },
+            expandSelection: { _ in
+                FieldCapture(
+                    target: target, elementFound: true, isSecure: false, role: "AXTextArea",
+                    selectedText: "Entire document", fieldValue: "", selectionUnreadable: false
+                )
+            }
+        )
+        defer { controller.hide() }
+        try await controller.handle(captureURL(previous: app), fallbackApplication: nil)
+        await waitUntil { provider.requests.count == 1 }
+        XCTAssertEqual(reads, 1)
+        XCTAssertEqual(provider.requests.first?.prompt, "Fix\n\nEntire document")
+    }
+
+    func testUnreadableExpandedEditorDoesNotReportAnEmptyDraft() async throws {
+        let app = try runningApp()
+        let provider = CountingProvider()
+        let model = FloaterState(provider: provider)
+        let controller = FloatingPanelController(
+            state: model,
+            accessibility: AccessibilityAccess(isTrusted: { true }, requestAccess: {}),
+            readFocusedField: { _ in
+                FieldCapture(
+                    target: StubPasteTarget(selection: .unavailable), elementFound: true,
+                    isSecure: false, role: "AXTextArea", selectedText: "", fieldValue: "", selectionUnreadable: false
+                )
+            },
+            activateForCapture: { _ in }, expandSelection: { _ in nil }
+        )
+        defer { controller.hide() }
+        try await controller.handle(captureURL(previous: app), fallbackApplication: nil)
+        XCTAssertEqual(model.errorMessage, CaptureMessages.unreadableField(for: candidate(app)))
+        XCTAssertTrue(provider.requests.isEmpty)
+    }
+
     func testCaptureReadsSelectionAndReplaceWillNotSelectAll() async throws {
         let app = try runningApp()
         let store = HistoryStore(fileURL: nil)
@@ -33,9 +85,9 @@ final class CaptureInputTests: XCTestCase {
 
         XCTAssertEqual(reads, 1)
         XCTAssertEqual(activations, 0)
-        XCTAssertEqual(provider.requests.map(\.input), ["  hello  "])
-        XCTAssertEqual(store.entries.map(\.request.input), ["  hello  "])
-        XCTAssertEqual(model.currentRequest?.prompt, "Fix")
+        XCTAssertEqual(provider.requests.map(\.prompt), ["Fix\n\n  hello  "])
+        XCTAssertEqual(store.entries.map(\.request.prompt), ["Fix\n\n  hello  "])
+        XCTAssertEqual(model.currentRequest?.prompt, "Fix\n\n  hello  ")
 
         target.selection = .none
         controller.replaceAndDismiss()
@@ -67,7 +119,7 @@ final class CaptureInputTests: XCTestCase {
 
         XCTAssertEqual(reads, 2)
         XCTAssertEqual(activations, 1)
-        XCTAssertEqual(provider.requests.first?.input, "field value")
+        XCTAssertEqual(provider.requests.first?.prompt, "Fix\n\nfield value")
     }
 
     func testEmptyFieldSkipsTheModelAndNamesTheApp() async throws {
@@ -121,14 +173,13 @@ final class CaptureInputTests: XCTestCase {
             for: PromptRequest(prompt: "Fix"),
             previousProcessID: blocked.processIdentifier,
             ignoredBundleIdentifiers: [try XCTUnwrap(blocked.bundleIdentifier)],
-            captureInput: true,
-            includesInput: false
+            captureInput: true
         ))
         await controller.handle(url, fallbackApplication: blocked, recentApplications: [blocked, editor])
         await waitUntil { provider.requests.count == 1 }
 
         XCTAssertEqual(readApp?.processIdentifier, editor.processIdentifier)
-        XCTAssertEqual(provider.requests.first?.input, "from editor")
+        XCTAssertEqual(provider.requests.first?.prompt, "Fix\n\nfrom editor")
     }
 
     func testNoEligibleAppDoesNotCallTheModel() async throws {
@@ -150,8 +201,7 @@ final class CaptureInputTests: XCTestCase {
             for: PromptRequest(prompt: "Fix", title: "Fix Grammar"),
             previousProcessID: app.processIdentifier,
             ignoredBundleIdentifiers: [try XCTUnwrap(app.bundleIdentifier)],
-            captureInput: true,
-            includesInput: false
+            captureInput: true
         ))
         await controller.handle(url, fallbackApplication: app, recentApplications: [app])
 
@@ -204,16 +254,12 @@ final class CaptureInputTests: XCTestCase {
         })
         defer { controller.hide() }
 
-        let url = try XCTUnwrap(PromptURL.makeURL(
-            for: PromptRequest(prompt: "Fix", input: ""),
-            captureInput: true,
-            includesInput: true
-        ))
+        let url = try XCTUnwrap(URL(string: "floater://prompt?prompt=Fix&input=&capture=1"))
         await controller.handle(url, fallbackApplication: nil)
         await waitUntil { provider.requests.count == 1 }
 
         XCTAssertEqual(reads, 0)
-        XCTAssertEqual(provider.requests.map(\.input), [""])
+        XCTAssertEqual(provider.requests.map(\.prompt), ["Fix"])
     }
 
     private func makeController(
@@ -235,8 +281,7 @@ final class CaptureInputTests: XCTestCase {
         try XCTUnwrap(PromptURL.makeURL(
             for: PromptRequest(prompt: "Fix", title: "Fix Grammar"),
             previousProcessID: previous.processIdentifier,
-            captureInput: true,
-            includesInput: false
+            captureInput: true
         ))
     }
 

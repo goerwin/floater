@@ -10,12 +10,13 @@ final class FloaterState: ObservableObject {
 
     @Published private(set) var screen: Screen = .newRequest
     @Published var prompt = ""
-    @Published var input = ""
     @Published var title: String?
     @Published var isPromptExpanded = false
     @Published private(set) var currentRequest: PromptRequest?
+    @Published private(set) var resultID = UUID()
     @Published private(set) var response = ""
     @Published private(set) var isGenerating = false
+    @Published private(set) var preparationMessage = "Generating response…"
     @Published private var hasCompletedResponse = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var actionErrorMessage: String?
@@ -33,7 +34,6 @@ final class FloaterState: ObservableObject {
         let result: ResultState
         let editingResult: ResultState?
         let prompt: String
-        let input: String
         let title: String?
         let isPromptExpanded: Bool
     }
@@ -84,14 +84,13 @@ final class FloaterState: ObservableObject {
     func showNewRequest() {
         clearResult()
         prompt = ""
-        input = ""
         title = nil
         showRequest()
     }
 
     func requestForSubmission() -> PromptRequest? {
         guard canSubmit else { return nil }
-        let request = PromptRequest(prompt: prompt.trimmingCharacters(in: .whitespacesAndNewlines), input: input, title: title)
+        let request = PromptRequest(prompt: prompt, title: title)
         title = nil
         return request
     }
@@ -102,7 +101,6 @@ final class FloaterState: ObservableObject {
         clearResult()
         editingResult = result
         prompt = request.prompt
-        input = request.input
         title = request.title
         screen = .newRequest
     }
@@ -123,7 +121,7 @@ final class FloaterState: ObservableObject {
         if historySession?.returnsToRequest == true, historySession?.originalRequest == nil {
             historySession?.originalRequest = RequestState(
                 result: resultState, editingResult: editingResult,
-                prompt: prompt, input: input, title: title, isPromptExpanded: isPromptExpanded
+                prompt: prompt, title: title, isPromptExpanded: isPromptExpanded
             )
         }
         restore(entry)
@@ -138,7 +136,6 @@ final class FloaterState: ObservableObject {
                 restore(original.result)
                 editingResult = original.editingResult
                 prompt = original.prompt
-                input = original.input
                 title = original.title
                 isPromptExpanded = original.isPromptExpanded
             }
@@ -167,6 +164,7 @@ final class FloaterState: ObservableObject {
         currentRequest = request
         screen = .results
         isGenerating = true
+        preparationMessage = provider.preparationMessage
 
         let provider = self.provider
         generationTask = Task { [weak self] in
@@ -216,6 +214,7 @@ final class FloaterState: ObservableObject {
         generationTask?.cancel()
         generationTask = nil
         activeGenerationID = nil
+        resultID = UUID()
         currentRequest = nil
         response = ""
         isGenerating = false

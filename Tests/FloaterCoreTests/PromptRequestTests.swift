@@ -2,10 +2,9 @@ import XCTest
 @testable import FloaterCore
 
 final class PromptRequestTests: XCTestCase {
-    func testPromptURLRoundTripsPromptInputAndPreviousProcessID() throws {
+    func testPromptURLRoundTripsFullPromptAndPreviousProcessID() throws {
         let request = PromptRequest(
-            prompt: "Translate this to Spanish",
-            input: "Hello, world! 🌎\nSecond line."
+            prompt: "  Translate this to Spanish:\n\nHello, world! 🌎\nSecond line.\n"
         )
         let url = try XCTUnwrap(PromptURL.makeURL(for: request, previousProcessID: 42))
 
@@ -36,14 +35,13 @@ final class PromptRequestTests: XCTestCase {
         )
     }
 
-    func testPromptURLRoundTripsIgnoreListAndCapturesOnlyWhenInputIsOmitted() throws {
+    func testPromptURLRoundTripsIgnoreListAndCaptureFlag() throws {
         let request = PromptRequest(prompt: "Fix grammar", title: "Fix Grammar")
         let url = try XCTUnwrap(PromptURL.makeURL(
             for: request,
             previousProcessID: 7,
             ignoredBundleIdentifiers: ["com.example.one", "com.example.two"],
-            captureInput: true,
-            includesInput: false
+            captureInput: true
         ))
 
         XCTAssertEqual(
@@ -62,7 +60,7 @@ final class PromptRequestTests: XCTestCase {
         let provided = try XCTUnwrap(URL(string: "floater://prompt?prompt=Fix&input=&capture=1&ignore="))
         XCTAssertEqual(
             PromptURL.parse(provided),
-            RoutedPrompt(request: PromptRequest(prompt: "Fix", input: ""), captureInput: false)
+            RoutedPrompt(request: PromptRequest(prompt: "Fix"), captureInput: false)
         )
 
         let otherFlag = try XCTUnwrap(URL(string: "floater://prompt?prompt=Fix&capture=true"))
@@ -70,5 +68,30 @@ final class PromptRequestTests: XCTestCase {
             PromptURL.parse(otherFlag),
             RoutedPrompt(request: PromptRequest(prompt: "Fix"), captureInput: false)
         )
+    }
+
+    func testLegacyURLInputIsAppendedWithoutTagsAndOverridesCapture() throws {
+        let url = try XCTUnwrap(URL(string: "floater://prompt?prompt=Rewrite&input=%20hello%0Aworld%20&capture=1"))
+        XCTAssertEqual(
+            PromptURL.parse(url),
+            RoutedPrompt(request: PromptRequest(prompt: "Rewrite\n\n hello\nworld "))
+        )
+    }
+
+    func testLegacyHistoryRequestDecodesIntoOnePromptAndSavesWithoutInput() throws {
+        let data = Data(#"{"prompt":"Rewrite","input":"  hello\nworld  ","title":"Saved"}"#.utf8)
+        let request = try JSONDecoder().decode(PromptRequest.self, from: data)
+        XCTAssertEqual(request, PromptRequest(prompt: "Rewrite\n\n  hello\nworld  ", title: "Saved"))
+        let encoded = try JSONEncoder().encode(request)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertNil(object["input"])
+        XCTAssertEqual(try JSONDecoder().decode(PromptRequest.self, from: encoded), request)
+    }
+
+    func testSinglePromptPreservesCallerDelimitersAndWhitespace() throws {
+        let request = PromptRequest(prompt: "  Rewrite only this:\n<text>\nhello\n</text>\n")
+        let data = try JSONEncoder().encode(request)
+        XCTAssertEqual(try JSONDecoder().decode(PromptRequest.self, from: data), request)
+        XCTAssertEqual(request.appending(""), request)
     }
 }
