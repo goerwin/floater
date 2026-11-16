@@ -134,7 +134,7 @@ final class NewRequestViewTests: XCTestCase {
         }
         settle(window)
         XCTAssertGreaterThan(window.contentView!.fittingSize.height, initialHeight)
-        XCTAssertGreaterThan(window.contentView!.fittingSize.height, FloaterPanelLayout.maximumHeight)
+        XCTAssertLessThanOrEqual(window.contentView!.fittingSize.height, FloaterPanelLayout.maximumEditingHeight)
         XCTAssertGreaterThan(prompt.frame.height, 100)
     }
 }

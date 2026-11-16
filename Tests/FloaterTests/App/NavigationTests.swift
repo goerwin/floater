@@ -334,7 +334,7 @@ final class NavigationTests: XCTestCase {
         XCTAssertEqual(secondOpenings, 1)
     }
 
-    func testEditingLongRequestLiftsPanelHeightLimitAndRestoresItOnRun() throws {
+    func testEditingLongRequestUsesScreenHeightLimitAndRestoresResultLimitOnRun() throws {
         let model = FloaterState(provider: TestProvider())
         let controller = FloatingPanelController(state: model)
         let request = PromptRequest(
@@ -346,13 +346,14 @@ final class NavigationTests: XCTestCase {
         let window = try XCTUnwrap(controller.window)
         defer { controller.dismiss() }
         settle(window)
+        let resultHeight = window.frame.height
         XCTAssertLessThanOrEqual(window.frame.height, FloaterPanelLayout.maximumHeight)
 
         sendKey("e", code: 14, modifiers: .command, to: window)
         XCTAssertNil(model.currentRequest)
         let editors = textViews(in: window.contentView!)
         XCTAssertEqual(editors.map(\.string), [request.prompt])
-        XCTAssertGreaterThan(window.frame.height, FloaterPanelLayout.maximumHeight)
+        XCTAssertGreaterThan(window.frame.height, resultHeight)
         XCTAssertLessThanOrEqual(window.frame.height, FloaterPanelLayout.maximumEditingHeight)
 
         sendKey("\r", code: 36, modifiers: .command, to: window)
