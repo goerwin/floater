@@ -60,7 +60,8 @@ final class ResultsViewTests: XCTestCase {
         guard texts.count == 3 else { return }
         let replyBounds = texts[0].convert(texts[0].bounds, to: chat.documentView)
         let userBounds = texts[1].convert(texts[1].bounds, to: chat.documentView)
-        XCTAssertGreaterThan(userBounds.minX, replyBounds.maxX)
+        XCTAssertGreaterThan(userBounds.minX, replyBounds.minX)
+        XCTAssertGreaterThan(userBounds.midX, chat.documentView!.bounds.midX)
         XCTAssertTrue(texts.allSatisfy(\.isSelectable))
     }
 
@@ -150,7 +151,7 @@ final class ResultsViewTests: XCTestCase {
         let displayed = textViews(in: text).map(\.string).joined(separator: "\n")
         XCTAssertTrue(displayed.contains("First reply"))
         XCTAssertTrue(displayed.contains("Follow up"))
-        XCTAssertTrue(displayed.contains("[Failed]"))
+        XCTAssertTrue(displayed.contains(ChatGenerationError.runnerFailed.localizedDescription))
         XCTAssertFalse(displayed.contains("previous_messages"))
         XCTAssertFalse(displayed.contains("secret user prompt"))
     }

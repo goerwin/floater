@@ -25,8 +25,8 @@ final class ResponseScrollView: NSScrollView {
 
     var onCopyMessage: (String) -> Void = { _ in }
     private let messagesView = MessageListView()
-    private var bubbles: [UUID: MessageBubble] = [:]
-    private var orderedBubbles: [MessageBubble] = []
+    private var rows: [UUID: MessageRow] = [:]
+    private var orderedRows: [MessageRow] = []
     private var followsBottom = true
     private var updateDepth = 0
     private var turnID: UUID?
@@ -70,19 +70,19 @@ final class ResponseScrollView: NSScrollView {
         if turnID != messages.last?.id { followsBottom = true; turnID = messages.last?.id }
         let previousOffset = contentView.bounds.origin
         let ids = Set(messages.map(\.id))
-        for (id, bubble) in bubbles where !ids.contains(id) { bubble.removeFromSuperview() }
-        bubbles = bubbles.filter { ids.contains($0.key) }
-        orderedBubbles = messages.map { message in
-            let bubble: MessageBubble
-            if let existing = bubbles[message.id] {
-                bubble = existing
+        for (id, row) in rows where !ids.contains(id) { row.removeFromSuperview() }
+        rows = rows.filter { ids.contains($0.key) }
+        orderedRows = messages.map { message in
+            let row: MessageRow
+            if let existing = rows[message.id] {
+                row = existing
             } else {
-                bubble = MessageBubble(message: message) { [weak self] in self?.onCopyMessage($0) }
-                bubbles[message.id] = bubble
-                messagesView.addSubview(bubble)
+                row = MessageRow(message: message) { [weak self] in self?.onCopyMessage($0) }
+                rows[message.id] = row
+                messagesView.addSubview(row)
             }
-            bubble.update(message, preparationMessage: preparationMessage)
-            return bubble
+            row.update(message, preparationMessage: preparationMessage)
+            return row
         }
         resizeDocument(width: contentSize.width)
         contentView.scroll(to: followsBottom ? bottomOffset : previousOffset)
@@ -121,10 +121,11 @@ final class ResponseScrollView: NSScrollView {
     private func resizeDocument(width: CGFloat) -> CGFloat {
         guard width > 0 else { return 32 }
         var y: CGFloat = 0
-        for bubble in orderedBubbles {
-            let size = bubble.sizeThatFits(maximumWidth: width * (bubble.role == .user ? 0.85 : 0.94))
-            let x = bubble.role == .user ? width - size.width : 0
-            bubble.frame = NSRect(origin: NSPoint(x: x, y: y), size: size)
+        for row in orderedRows {
+            let size = row.sizeThatFits(maximumWidth: width * (row.role == .user ? 0.85 : 0.94))
+            guard size.height > 0 else { row.frame = .zero; continue }
+            let x = row.role == .user ? width - size.width : 0
+            row.frame = NSRect(origin: NSPoint(x: x, y: y), size: size)
             y += size.height + 12
         }
         let height = max(32, y - 12)
