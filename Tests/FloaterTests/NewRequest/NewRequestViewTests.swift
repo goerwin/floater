@@ -83,6 +83,30 @@ final class NewRequestViewTests: XCTestCase {
         XCTAssertEqual(requests.count, 1)
     }
 
+    func testTabOrderRemainsUsableWithoutANativeKeyViewLoop() throws {
+        for draft in ["", "Summarize"] {
+            let model = FloaterState(provider: TestProvider(), historyStore: HistoryStore(fileURL: nil))
+            model.prompt = draft
+            let window = makeWindow(state: model)
+            defer { window.close() }
+            let prompt = try XCTUnwrap(textViews(in: window.contentView!).first)
+            // Reproduce the native traversal staying inside the prompt's scroll view.
+            window.autorecalculatesKeyViewLoop = false
+            prompt.nextKeyView = prompt
+
+            let actions = ["Dismiss"] + (draft.isEmpty ? [] : ["Run"]) + ["New", "History"]
+            for backwards in [false, true] {
+                window.makeFirstResponder(prompt)
+                let order = (backwards ? Array(actions.reversed()) : actions) + ["Prompt"]
+                for label in order {
+                    sendKey(backwards ? "\u{19}" : "\t", code: 48, modifiers: backwards ? .shift : [], to: window)
+                    XCTAssertEqual((window.firstResponder as? NSView)?.accessibilityLabel(), label)
+                }
+                XCTAssertEqual(prompt.string, draft)
+            }
+        }
+    }
+
     func testNativeWordMovementAndSelectionStayInsideEditors() throws {
         let window = makeNewRequest()
         defer { window.close() }
@@ -97,6 +121,15 @@ final class NewRequestViewTests: XCTestCase {
             XCTAssertEqual(editor.string, "First second")
             XCTAssertTrue(window.firstResponder === editor)
         }
+    }
+
+    func testOptionTabUsesNativeTextEditingInThePrompt() throws {
+        let window = makeNewRequest()
+        defer { window.close() }
+        let prompt = try XCTUnwrap(window.firstResponder as? NSTextView)
+        sendKey("\t", code: 48, modifiers: .option, to: window)
+        XCTAssertTrue(window.firstResponder === prompt)
+        XCTAssertEqual(prompt.string, "\t")
     }
 
     func testEnterSubmitsThePromptAndShiftEnterAddsANewline() throws {

@@ -118,6 +118,15 @@ struct FloaterWindowView: View {
 
     private func handleKeyDown(_ event: NSEvent, window: NSWindow) -> Bool {
         let modifiers = event.modifierFlags.intersection([.shift, .command, .option, .control])
+        if state.screen == .newRequest, event.keyCode == 48, modifiers.subtracting(.shift).isEmpty {
+            let identifier = PanelKeyboardHandler.moveFocus(
+                in: window,
+                identifiers: [PanelControl.prompt, .dismiss, .run, .new, .history].map(\.rawValue),
+                backwards: modifiers.contains(.shift)
+            )
+            focusedControl = identifier.flatMap(PanelControl.init(rawValue:))
+            return true
+        }
         if event.keyCode == 53, modifiers.isEmpty {
             onDismiss()
             return true

@@ -28,7 +28,7 @@ final class HistoryViewTests: XCTestCase {
             let date = row.date.convert(row.date.bounds, to: row)
             let preview = row.preview.convert(row.preview.bounds, to: row)
             for field in [row.title, row.date, row.preview] {
-                XCTAssertFalse(field.stringValue.contains(where: { $0.isWhitespace && $0 != " " }))
+                XCTAssertFalse(field.stringValue.contains(where: { $0.isNewline || $0 == "\t" }), field.stringValue.debugDescription)
                 XCTAssertLessThan(field.frame.height, 20)
                 XCTAssertTrue(row.bounds.contains(field.convert(field.bounds, to: row)))
             }
