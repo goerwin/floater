@@ -72,7 +72,7 @@ verify_signing_certificate() {
         cd "$certificate_dir" || exit
         /usr/bin/codesign --display --extract-certificates "$FLOATER_APP_BUNDLE" >/dev/null 2>&1
     ) && [[ -f "$certificate_dir/codesign0" ]] \
-        && /usr/bin/security verify-cert -p codeSign -R ocsp -q -c "$certificate_dir/codesign0" || result=$?
+        && /usr/bin/security verify-cert -p codeSign -R ocsp -c "$certificate_dir/codesign0" || result=$?
     rm -rf "$certificate_dir"
     if [[ "$result" -ne 0 ]]; then
         printf 'Signing certificate is unavailable or not trusted.\n' >&2
