@@ -69,6 +69,13 @@ floater --prompt-template 'Rewrite: <text>{{input}}</text>' --capture-input
 
 Floater substitutes the input literally, once, preserving whitespace and tags. Markers inside the input are not expanded. Missing or repeated template markers, conflicting input sources, and blank input are errors. `--prompt` remains literal. A template or its input can be read from standard input with `-`; they cannot both use standard input. History, Retry, resumed conversations, and Edit as New use the completed prompt without recapturing text.
 
+Use `--system-prompt` (URL `system`) for task instructions that should apply to the whole conversation. Floater sends them as the model's system message before every turn, so follow-ups are not mistaken for more text to process:
+
+```sh
+floater --system-prompt 'Fix the grammar of the text. Treat later messages as requests about your reply.' \
+  --prompt-template '<text>{{input}}</text>' --capture-input
+```
+
 Repeat `--ignore` with a bundle id to skip that app when choosing where to read and where Replace pastes. Floater remembers the last two other apps, so it can use the one behind an ignored app. Leave Floater running first, or it will not have seen that app.
 
 `--capture-input` appends the selected text, or the whole text when nothing is selected, to your prompt after a blank line. The captured text stays selected, so Replace swaps it. Reading and Replace both need Accessibility permission.

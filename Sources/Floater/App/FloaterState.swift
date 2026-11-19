@@ -9,6 +9,7 @@ final class FloaterState: ObservableObject {
     @Published private(set) var screen: Screen = .newRequest
     @Published var prompt = ""
     @Published var title: String?
+    @Published var systemPrompt: String?
     @Published var isPromptExpanded = false
     @Published private(set) var conversation: HistoryEntry?
     @Published private(set) var resultID = UUID()
@@ -38,6 +39,7 @@ final class FloaterState: ObservableObject {
         let editingResult: ResultState?
         let prompt: String
         let title: String?
+        let systemPrompt: String?
         let isPromptExpanded: Bool
     }
 
@@ -97,13 +99,15 @@ final class FloaterState: ObservableObject {
         historySession = nil
         prompt = ""
         title = nil
+        systemPrompt = nil
         showRequest()
     }
 
     func requestForSubmission() -> PromptRequest? {
         guard canSubmit else { return nil }
-        let request = PromptRequest(prompt: prompt, title: title)
+        let request = PromptRequest(prompt: prompt, title: title, systemPrompt: systemPrompt)
         title = nil
+        systemPrompt = nil
         return request
     }
 
@@ -115,6 +119,7 @@ final class FloaterState: ObservableObject {
         editingResult = result
         prompt = request.prompt
         title = request.title
+        systemPrompt = request.systemPrompt
         screen = .newRequest
     }
 
@@ -135,7 +140,7 @@ final class FloaterState: ObservableObject {
         if historySession?.returnsToRequest == true, historySession?.originalRequest == nil {
             historySession?.originalRequest = RequestState(
                 result: resultState, editingResult: editingResult,
-                prompt: prompt, title: title, isPromptExpanded: isPromptExpanded
+                prompt: prompt, title: title, systemPrompt: systemPrompt, isPromptExpanded: isPromptExpanded
             )
         }
         restore(entry)
@@ -151,6 +156,7 @@ final class FloaterState: ObservableObject {
                 editingResult = original.editingResult
                 prompt = original.prompt
                 title = original.title
+                systemPrompt = original.systemPrompt
                 isPromptExpanded = original.isPromptExpanded
             }
             showRequest()
@@ -159,6 +165,7 @@ final class FloaterState: ObservableObject {
         // Escape in a conversation always hides it, including when opened from History.
         historySession = nil
         title = nil
+        systemPrompt = nil
         return false
     }
 

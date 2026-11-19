@@ -10,12 +10,13 @@ struct FloaterCLI {
 
         if arguments.contains("--help") || arguments.contains("-h") {
             print("""
-            Usage: floater --prompt <text> [--input <text>] [--capture-input] [--title <text>] [--ignore <bundle-id>]...
-                   floater --prompt-template <text> (--input <text> | --capture-input) [--title <text>] [--ignore <bundle-id>]...
+            Usage: floater --prompt <text> [--input <text>] [--capture-input] [--title <text>] [--system-prompt <text>] [--ignore <bundle-id>]...
+                   floater --prompt-template <text> (--input <text> | --capture-input) [--title <text>] [--system-prompt <text>] [--ignore <bundle-id>]...
 
             Use - to read a prompt, template, or input from standard input.
             Templates require exactly one {{input}} marker and one non-empty input source.
             Input replaces the marker literally, once. Plain prompts remain literal.
+            --system-prompt sets standing instructions for the whole conversation, including follow-ups.
             Repeat --ignore to skip those apps when choosing where to read and replace.
             --capture-input reads selected text, or the focused field when nothing is selected.
             Example: floater --prompt-template "Translate: {{input}}" --capture-input

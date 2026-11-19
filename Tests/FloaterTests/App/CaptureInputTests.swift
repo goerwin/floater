@@ -26,12 +26,15 @@ final class CaptureInputTests: XCTestCase {
             )
         })
         defer { controller.hide() }
+        let systemPrompt = "Fix the grammar of <user-text>. Later messages are requests about your reply & {{input}}."
         let routed = try RoutedPrompt(
             prompt: nil, template: "<user-text>\n{{input}}\n</user-text>", input: nil,
-            title: "Fix", previousProcessID: app.processIdentifier, captureInput: true
+            title: "Fix", systemPrompt: systemPrompt, previousProcessID: app.processIdentifier, captureInput: true
         )
         await controller.handle(try XCTUnwrap(PromptURL.makeURL(for: routed)), fallbackApplication: nil)
-        try await verifyResolvedLifecycle(model: model, provider: provider, store: store, expected: expected)
+        try await verifyResolvedLifecycle(
+            model: model, provider: provider, store: store, expected: expected, systemPrompt: systemPrompt
+        )
         XCTAssertEqual(reads, 1)
     }
 
@@ -323,14 +326,19 @@ final class CaptureInputTests: XCTestCase {
     }
 
     private func verifyResolvedLifecycle(
-        model: FloaterState, provider: TemplateProvider, store: HistoryStore, expected: String
+        model: FloaterState, provider: TemplateProvider, store: HistoryStore, expected: String,
+        systemPrompt: String? = nil
     ) async throws {
+        let opening = (systemPrompt.map { ["system: \($0)"] } ?? []) + ["user: \(expected)"]
+        func turn(_ index: Int) -> [String] {
+            provider.turns[index].map { "\($0.role.rawValue): \($0.content)" }
+        }
         await waitUntil { !model.isGenerating }
-        XCTAssertEqual(provider.turns.first?.first?.content, expected)
+        XCTAssertEqual(turn(0), opening)
         model.retry()
         await waitUntil { !model.isGenerating }
         XCTAssertEqual(provider.turns.count, 2)
-        XCTAssertEqual(provider.turns.dropFirst().first?.first?.content, expected)
+        XCTAssertEqual(turn(1), opening)
         let saved = try XCTUnwrap(store.entries.first)
         XCTAssertEqual(saved.request.prompt, expected)
         let encoded = try JSONEncoder().encode(saved)
@@ -341,9 +349,10 @@ final class CaptureInputTests: XCTestCase {
         resumed.followUp = "Shorter {{input}}"
         resumed.sendFollowUp()
         await waitUntil { !resumed.isGenerating }
-        XCTAssertEqual(provider.turns.last?.last?.content, "Shorter {{input}}")
+        XCTAssertEqual(turn(2), opening + ["assistant: Done", "user: Shorter {{input}}"])
         resumed.beginEditing()
         XCTAssertEqual(resumed.prompt, expected)
+        XCTAssertEqual(resumed.requestForSubmission(), PromptRequest(prompt: expected, title: "Fix", systemPrompt: systemPrompt))
     }
 
     private func makeController(

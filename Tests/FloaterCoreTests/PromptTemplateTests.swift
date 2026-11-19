@@ -20,6 +20,24 @@ final class PromptTemplateTests: XCTestCase {
         XCTAssertNil(try PromptURL.decode(typedURL)?.promptTemplate)
     }
 
+    func testSystemPromptSurvivesTypedCapturedAndPlainRequestsThroughURLs() throws {
+        let system = "Fix <user-text>.\nLater messages & {{input}} are requests: \"shorter\"."
+        let typed = try command(["--prompt-template", template, "--input", "hi", "--system-prompt", system])
+        let captured = try command(["--prompt-template", template, "--capture-input", "--system-prompt=" + system])
+        let plain = try command(["--prompt", "Fix: hi", "--system-prompt", system])
+
+        let resolved = try XCTUnwrap(PromptURL.decode(try XCTUnwrap(PromptURL.makeURL(for: captured)))).resolving(input: "hi")
+        XCTAssertEqual(resolved, typed.request)
+        XCTAssertEqual(resolved.systemPrompt, system)
+        XCTAssertEqual(try PromptURL.decode(try XCTUnwrap(PromptURL.makeURL(for: typed)))?.request, typed.request)
+        XCTAssertEqual(try PromptURL.decode(try XCTUnwrap(PromptURL.makeURL(for: plain)))?.request.systemPrompt, system)
+        let saved = try JSONDecoder().decode(PromptRequest.self, from: JSONEncoder().encode(resolved))
+        XCTAssertEqual(saved, resolved)
+
+        XCTAssertNil(try command(["--prompt", "Fix: hi", "--system-prompt", " \n"]).request.systemPrompt)
+        XCTAssertThrowsError(try command(["--prompt", "Fix: hi", "--system-prompt"]))
+    }
+
     func testURLTemplateWithExplicitInputRendersOnce() throws {
         var components = URLComponents()
         components.scheme = "floater"

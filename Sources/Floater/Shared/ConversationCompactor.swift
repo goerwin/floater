@@ -8,6 +8,7 @@ enum ConversationCompactor {
         if end == messages.count, messages.last?.role == .assistant, messages.last?.status != .complete { end -= 1 }
         guard end > 0 else { throw ChatGenerationError.failed("There are no earlier messages to compact.") }
         let source = conversation.contextMessages(before: end)
+            .filter { $0.role != .system }
             .map { "\($0.role.rawValue.uppercased()):\n\($0.content)" }.joined(separator: "\n\n")
         let chunkSize = provider.compactionChunkSize
         var remaining = source[...]

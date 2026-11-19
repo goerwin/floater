@@ -30,7 +30,7 @@ struct HistoryEntry: Codable, Equatable, Identifiable {
     func contextMessages(before endIndex: Int? = nil) -> [ChatMessage] {
         let end = endIndex ?? messages.count
         var start = 0
-        var context: [ChatMessage] = []
+        var context = request.systemPrompt.map { [ChatMessage(role: .system, content: $0)] } ?? []
         if let summary, let index = messages.firstIndex(where: { $0.id == summary.throughMessageID }), index < end {
             start = index + 1
             context.append(ChatMessage(role: .user, content: "Earlier conversation, summarized at my request:\n\(summary.content)"))

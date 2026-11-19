@@ -10,6 +10,7 @@ public enum PromptCommand {
         var template: String?
         var input: String?
         var title: String?
+        var systemPrompt: String?
         var ignoredBundleIdentifiers: [String] = []
         var captureInput = false
         var index = 0
@@ -23,7 +24,7 @@ public enum PromptCommand {
                 index += 1
                 continue
             }
-            guard ["--prompt", "--prompt-template", "--input", "--title", "--ignore"].contains(option) else {
+            guard ["--prompt", "--prompt-template", "--input", "--title", "--system-prompt", "--ignore"].contains(option) else {
                 throw PromptCommandError.unknownOption(option)
             }
             let value: String
@@ -38,6 +39,7 @@ public enum PromptCommand {
             case "--prompt": prompt = value
             case "--prompt-template": template = value
             case "--input": input = value
+            case "--system-prompt": systemPrompt = value
             case "--ignore":
                 guard !value.isEmpty else { throw PromptCommandError.missingValue(option) }
                 ignoredBundleIdentifiers.append(value)
@@ -59,7 +61,7 @@ public enum PromptCommand {
             if input == "-" { input = text }
         }
         return try RoutedPrompt(
-            prompt: prompt, template: template, input: input, title: title,
+            prompt: prompt, template: template, input: input, title: title, systemPrompt: systemPrompt,
             previousProcessID: previousProcessID,
             ignoredBundleIdentifiers: ignoredBundleIdentifiers, captureInput: captureInput
         )

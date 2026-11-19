@@ -34,9 +34,11 @@ final class FoundationModelsProvider: AIProvider {
         guard let prompt = messages.last, prompt.role == .user else { throw ChatGenerationError.emptyResponse }
         let entries: [Transcript.Entry] = messages.dropLast().map { message in
             let segments: [Transcript.Segment] = [.text(.init(content: message.content))]
-            return message.role == .user
-                ? .prompt(.init(segments: segments))
-                : .response(.init(assetIDs: [], segments: segments))
+            return switch message.role {
+            case .system: .instructions(.init(segments: segments, toolDefinitions: []))
+            case .user: .prompt(.init(segments: segments))
+            case .assistant: .response(.init(assetIDs: [], segments: segments))
+            }
         }
         let session = LanguageModelSession(transcript: Transcript(entries: entries))
 

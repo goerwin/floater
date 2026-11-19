@@ -3,26 +3,32 @@ import Foundation
 public struct PromptRequest: Codable, Equatable, Sendable {
     public let prompt: String
     public let title: String?
+    /// Standing instructions sent as the system message before every turn of the conversation.
+    public let systemPrompt: String?
 
-    public init(prompt: String, title: String? = nil) {
+    public init(prompt: String, title: String? = nil, systemPrompt: String? = nil) {
         self.prompt = prompt
         self.title = title
+        self.systemPrompt = systemPrompt.flatMap {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0
+        }
     }
 
     public func appending(_ text: String) -> PromptRequest {
         guard !text.isEmpty else { return self }
-        return PromptRequest(prompt: prompt.isEmpty ? text : "\(prompt)\n\n\(text)", title: title)
+        return PromptRequest(prompt: prompt.isEmpty ? text : "\(prompt)\n\n\(text)", title: title, systemPrompt: systemPrompt)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case prompt, title, input
+        case prompt, title, systemPrompt, input
     }
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         self = try PromptRequest(
             prompt: values.decode(String.self, forKey: .prompt),
-            title: values.decodeIfPresent(String.self, forKey: .title)
+            title: values.decodeIfPresent(String.self, forKey: .title),
+            systemPrompt: values.decodeIfPresent(String.self, forKey: .systemPrompt)
         ).appending(values.decodeIfPresent(String.self, forKey: .input) ?? "")
     }
 
@@ -30,6 +36,7 @@ public struct PromptRequest: Codable, Equatable, Sendable {
         var values = encoder.container(keyedBy: CodingKeys.self)
         try values.encode(prompt, forKey: .prompt)
         try values.encodeIfPresent(title, forKey: .title)
+        try values.encodeIfPresent(systemPrompt, forKey: .systemPrompt)
     }
 }
 
@@ -59,6 +66,7 @@ public struct RoutedPrompt: Equatable, Sendable {
         template: String?,
         input: String?,
         title: String? = nil,
+        systemPrompt: String? = nil,
         previousProcessID: Int32? = nil,
         ignoredBundleIdentifiers: [String] = [],
         captureInput: Bool = false
@@ -73,7 +81,7 @@ public struct RoutedPrompt: Equatable, Sendable {
             guard (input != nil) != captureInput else { throw PromptInputError.inputSource }
             let resolved = try input.map { try promptTemplate.render(input: $0) }
             self.init(
-                request: PromptRequest(prompt: resolved ?? text, title: title),
+                request: PromptRequest(prompt: resolved ?? text, title: title, systemPrompt: systemPrompt),
                 previousProcessID: previousProcessID,
                 ignoredBundleIdentifiers: ignoredBundleIdentifiers,
                 captureInput: captureInput,
@@ -81,7 +89,7 @@ public struct RoutedPrompt: Equatable, Sendable {
             )
         } else {
             self.init(
-                request: PromptRequest(prompt: text, title: title).appending(input ?? ""),
+                request: PromptRequest(prompt: text, title: title, systemPrompt: systemPrompt).appending(input ?? ""),
                 previousProcessID: previousProcessID,
                 ignoredBundleIdentifiers: ignoredBundleIdentifiers,
                 captureInput: captureInput && input == nil
@@ -91,7 +99,9 @@ public struct RoutedPrompt: Equatable, Sendable {
 
     public func resolving(input: String) throws -> PromptRequest {
         guard let promptTemplate else { return request.appending(input) }
-        return PromptRequest(prompt: try promptTemplate.render(input: input), title: request.title)
+        return PromptRequest(
+            prompt: try promptTemplate.render(input: input), title: request.title, systemPrompt: request.systemPrompt
+        )
     }
 }
 
@@ -126,6 +136,9 @@ public enum PromptURL {
            !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             queryItems.append(URLQueryItem(name: "title", value: title))
         }
+        if let systemPrompt = routed.request.systemPrompt {
+            queryItems.append(URLQueryItem(name: "system", value: systemPrompt))
+        }
 
         components.queryItems = queryItems
 
@@ -159,6 +172,7 @@ public enum PromptURL {
         let inputItem = queryItems.first(where: { $0.name == "input" })
         let input = inputItem.map { $0.value ?? "" }
         let title = queryItems.first(where: { $0.name == "title" })?.value
+        let systemPrompt = queryItems.first(where: { $0.name == "system" })?.value
         let previousProcessID = queryItems
             .first(where: { $0.name == "previousPID" })?
             .value
@@ -174,6 +188,7 @@ public enum PromptURL {
             template: template,
             input: input,
             title: title,
+            systemPrompt: systemPrompt,
             previousProcessID: previousProcessID,
             ignoredBundleIdentifiers: ignoredBundleIdentifiers,
             captureInput: captureInput

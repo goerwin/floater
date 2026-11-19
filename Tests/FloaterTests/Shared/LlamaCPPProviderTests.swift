@@ -100,6 +100,28 @@ final class LlamaCPPProviderTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.directory.appendingPathComponent("unwanted").path))
     }
 
+    func testSystemPromptIsSentAsAGemmaSystemTurnBeforeTheFirstRequest() async throws {
+        let fixture = try makeFixture("""
+        while [ "$#" -gt 0 ]; do
+            case "$1" in
+                --file) shift; cat "$1" > "$fixture_dir/received.txt" ;;
+                --chat-template-file) shift; cat "$1" > "$fixture_dir/template.txt" ;;
+            esac
+            shift
+        done
+        printf 'Answer [end of text]\\n'
+        """)
+        defer { try? FileManager.default.removeItem(at: fixture.directory) }
+        var entry = HistoryEntry(request: PromptRequest(prompt: "<user-text>\ni has</user-text>", systemPrompt: "Fix the grammar."))
+        entry.messages.append(ChatMessage(role: .assistant, content: "I have."))
+        entry.messages.append(ChatMessage(role: .user, content: "shorter"))
+        try await fixture.provider.generate(messages: entry.contextMessages()) { _ in }
+        let template = try String(contentsOf: fixture.directory.appendingPathComponent("template.txt"), encoding: .utf8)
+        XCTAssertTrue(template.contains(#""role":"system""#), template)
+        XCTAssertLessThan(try XCTUnwrap(template.range(of: "Fix the grammar.")).lowerBound, try XCTUnwrap(template.range(of: "i has")).lowerBound)
+        XCTAssertEqual(try String(contentsOf: fixture.directory.appendingPathComponent("received.txt"), encoding: .utf8), "shorter")
+    }
+
     func testInstalledGemmaTransformsTextWithoutGeneratingAThoughtChannel() async throws {
         guard ProcessInfo.processInfo.environment["FLOATER_TEST_GEMMA"] == "1" else {
             throw XCTSkip("Set FLOATER_TEST_GEMMA=1 to test the installed runtime and cached model.")

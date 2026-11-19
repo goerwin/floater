@@ -1,7 +1,7 @@
 import Foundation
 
 struct ChatMessage: Codable, Equatable, Identifiable, Sendable {
-    enum Role: String, Codable, Sendable { case user, assistant }
+    enum Role: String, Codable, Sendable { case system, user, assistant }
     enum Status: String, Codable, Sendable { case complete, generating, stopped, failed }
 
     let id: UUID
